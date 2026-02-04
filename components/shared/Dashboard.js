@@ -11,7 +11,10 @@ export default function Dashboard({ user }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.get('/dashboard').then(setStats).catch(console.error).finally(() => setLoading(false))
+    api.get('/dashboard')
+      .then((d) => setStats(d && typeof d === 'object' ? d : null))
+      .catch(() => setStats(null))
+      .finally(() => setLoading(false))
   }, [])
 
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin" style={{ color: BRAND_BLUE }} /></div>
@@ -33,17 +36,20 @@ export default function Dashboard({ user }) {
       <Card>
         <CardHeader><CardTitle className="text-lg">Seneste opgaver</CardTitle></CardHeader>
         <CardContent>
-          {stats?.recentTasks?.length > 0 ? (
+          {Array.isArray(stats?.recentTasks) && stats.recentTasks.length > 0 ? (
             <div className="space-y-3">
-              {stats.recentTasks.map((task) => (
+              {stats.recentTasks.map((task) => {
+                if (!task?.id) return null
+                const cfg = STATUS_CONFIG[task.status] || {}
+                return (
                 <div key={task.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <div className="flex items-center gap-3">
-                    <div className={`w-2 h-2 rounded-full ${STATUS_CONFIG[task.status]?.color}`} />
+                    <div className={`w-2 h-2 rounded-full ${cfg.color || 'bg-gray-400'}`} />
                     <div><p className="font-medium text-sm">#{task.taskNumber} - {task.address}</p><p className="text-xs text-gray-500">{task.companyName}</p></div>
                   </div>
-                  <Badge variant="outline" className={STATUS_CONFIG[task.status]?.textColor}>{STATUS_CONFIG[task.status]?.label}</Badge>
+                  <Badge variant="outline" className={cfg.textColor || 'text-gray-600'}>{cfg.label || task.status || '—'}</Badge>
                 </div>
-              ))}
+              )})}
             </div>
           ) : <p className="text-gray-500 text-center py-8">Ingen opgaver endnu</p>}
         </CardContent>

@@ -480,6 +480,12 @@ async function handleRoute(request, { params }) {
       ))
     }
     const db = await connectToMongo()
+    if (!db) {
+      return handleCORS(NextResponse.json(
+        { error: 'Database-forbindelse kunne ikke etableres. Prøv igen om et øjeblik.' },
+        { status: 503 }
+      ))
+    }
     await initializeData(db)
 
     // ============ AUTH ROUTES ============

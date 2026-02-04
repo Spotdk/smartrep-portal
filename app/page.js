@@ -6,6 +6,7 @@ import { ClipboardList, Camera, LogOut, Loader2 } from 'lucide-react'
 import { api, BRAND_BLUE } from '@/lib/constants'
 
 // Import shared components
+import ErrorBoundary from '@/components/shared/ErrorBoundary'
 import LoginPage from '@/components/shared/LoginPage'
 import Dashboard from '@/components/shared/Dashboard'
 import Header from '@/components/shared/Header'
@@ -179,7 +180,9 @@ export default function App() {
           </div>
         </nav>
         <main className="p-4">
-          {activeView === 'tasks' ? <TechnicianTasksView user={user} /> : <PhotoReportsView user={user} />}
+          <ErrorBoundary>
+            {activeView === 'tasks' ? <TechnicianTasksView user={user} /> : <PhotoReportsView user={user} />}
+          </ErrorBoundary>
         </main>
       </div>
     )
@@ -205,7 +208,7 @@ export default function App() {
           setCollapsed={setSidebarCollapsed} 
         />
         <main className="flex-1 p-6 overflow-auto">
-          {renderView()}
+          <ErrorBoundary>{renderView()}</ErrorBoundary>
         </main>
       </div>
     </div>
