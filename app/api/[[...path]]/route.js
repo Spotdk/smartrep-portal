@@ -447,6 +447,12 @@ async function handleRoute(request, { params }) {
   const method = request.method
 
   try {
+    if (!process.env.MONGO_URL?.trim()) {
+      return handleCORS(NextResponse.json(
+        { error: 'MONGO_URL er ikke sat i Vercel. Gå til Projekt → Settings → Environment Variables og tilføj MONGO_URL med din MongoDB Atlas connection string.' },
+        { status: 503 }
+      ))
+    }
     const db = await connectToMongo()
     await initializeData(db)
 
