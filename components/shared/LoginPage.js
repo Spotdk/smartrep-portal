@@ -58,14 +58,6 @@ export default function LoginPage({ onLogin }) {
               {loading && <Loader2 className="w-4 h-4 animate-spin mr-2" />}Log ind
             </Button>
           </form>
-          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-            <p className="text-sm text-gray-600 font-medium mb-2">Demo login:</p>
-            <div className="text-xs text-gray-500 space-y-1">
-              <p><strong>Admin:</strong> admin@smartrep.dk / admin123</p>
-              <p><strong>Kunde:</strong> kunde@huscompagniet.dk / admin123</p>
-              <p><strong>Tekniker:</strong> tekniker@smartrep.dk / admin123</p>
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>

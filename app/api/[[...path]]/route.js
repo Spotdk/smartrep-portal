@@ -2576,7 +2576,7 @@ async function handleRoute(request, { params }) {
 
     // ============ ORDER CONFIRMATION (ORDREBEKRÆFTELSE) ============
     const ORIGIN_FREDERICIA = 'Fredericia, Denmark'
-    // Link i email/SMS til kunde skal være et offentligt URL – brug PORTAL_PUBLIC_URL (fx https://portal.smartrep.nu)
+    // Link i email/SMS til kunde skal være et offentligt URL – brug PORTAL_PUBLIC_URL (fx https://kundeportal.smartrep.nu)
     const BASE_URL = process.env.PORTAL_PUBLIC_URL || process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
 
     // Send order confirmation - POST /api/order-confirmation/send

@@ -118,7 +118,29 @@ export default function KundestyringView() {
     }
   }
 
-  // Resend portal invitation function
+  // Send portal invitation (first time)
+  const handleSendInvitation = async (contact) => {
+    if (!contact.email?.trim()) {
+      alert('Kontakten har ikke e-mail – tilføj e-mail først.')
+      return
+    }
+    if (!confirm(`Vil du sende invitation til portalen til ${contact.name} (${contact.email})?`)) return
+    try {
+      await api.post('/communications/send', {
+        type: 'email',
+        template: 'portal_invitation',
+        to: contact.email,
+        contactName: contact.name
+      })
+      alert('✅ Invitation sendt til ' + contact.email)
+      loadData()
+    } catch (err) {
+      console.error(err)
+      alert('Fejl ved afsendelse af invitation')
+    }
+  }
+
+  // Resend portal invitation (contact already has access)
   const handleResendInvitation = async (contact) => {
     if (!confirm(`Vil du gensende portal invitation til ${contact.name} (${contact.email})?`)) return
     try {
@@ -475,7 +497,7 @@ export default function KundestyringView() {
                                   </span>
                                 </div>
                                 <div className="flex items-center gap-1 w-32 justify-end">
-                                  {(contact.hasPortalAccess || contact.role === 'customer') && (
+                                  {(contact.hasPortalAccess || contact.role === 'customer') ? (
                                     <>
                                       <Button 
                                         variant="ghost" 
@@ -491,11 +513,21 @@ export default function KundestyringView() {
                                         size="sm"
                                         className="text-xs text-gray-500 hover:text-blue-600"
                                         onClick={(e) => { e.stopPropagation(); handleResendInvitation(contact) }}
-                                        title="Gensend portal invitation"
+                                        title="Gensend invitation"
                                       >
                                         ✉️
                                       </Button>
                                     </>
+                                  ) : (
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm"
+                                      className="text-xs text-gray-500 hover:text-blue-600"
+                                      onClick={(e) => { e.stopPropagation(); handleSendInvitation(contact) }}
+                                      title="Send invitation til portal"
+                                    >
+                                      ✉️
+                                    </Button>
                                   )}
                                   <Button 
                                     variant="ghost" 

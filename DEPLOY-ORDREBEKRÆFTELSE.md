@@ -4,7 +4,7 @@
 
 **Ja – I kan sende nu.** Kunden får både email og SMS som normalt.
 
-**Men:** Linket i email/SMS peger på et URL (fx `https://portal.smartrep.nu`). Det link kan kunden **kun** åbne, hvis portalen faktisk kører på den adresse. Så:
+**Men:** Linket i email/SMS peger på et URL (fx `https://kundeportal.smartrep.nu`). Det link kan kunden **kun** åbne, hvis portalen faktisk kører på den adresse. Så:
 
 - **Før deploy:** I kan sende; kunden modtager beskeden, men når de klikker på linket, får de "Siden kan ikke findes".
 - **Efter deploy:** I sender som nu, og linket virker – kunden kan åbne og besvare ordrebekræftelsen.
@@ -100,7 +100,7 @@ Uden disse kører appen, men ordrebekræftelser (email, SMS, link) virker ikke k
    - **Email: ✗** med rød fejl → læs fejlen og ret SendGrid (verificer afsender, tjek API-nøgle).
 6. Åbn linket fra resultatet – det skal åbne jeres Vercel-portal. Virker det: Klik **Genfremsend**, så får hun mail/SMS med et link der virker.
 
-Hvis I senere vil bruge eget domæne (fx `portal.smartrep.nu`): I Vercel under **Settings → Domains** kan I tilføje domænet og følge instruktionerne. Derefter sæt `PORTAL_PUBLIC_URL` og `NEXT_PUBLIC_BASE_URL` til `https://portal.smartrep.nu` og redeploy.
+Hvis I senere vil bruge eget domæne (fx `kundeportal.smartrep.nu`): I Vercel under **Settings → Domains** kan I tilføje domænet og følge instruktionerne. Derefter sæt `PORTAL_PUBLIC_URL` og `NEXT_PUBLIC_BASE_URL` til `https://kundeportal.smartrep.nu` og redeploy.
 
 ---
 

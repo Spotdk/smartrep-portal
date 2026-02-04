@@ -121,8 +121,8 @@ Matcher design fra: `A4 Photo Report Design – Figma Make.pdf`
 ```
 MONGO_URL=<din-mongodb-url>
 DB_NAME=smartrep_portal
-NEXT_PUBLIC_BASE_URL=https://portal.smartrep.nu
-PORTAL_PUBLIC_URL=https://portal.smartrep.nu
+NEXT_PUBLIC_BASE_URL=https://kundeportal.smartrep.nu
+PORTAL_PUBLIC_URL=https://kundeportal.smartrep.nu
 
 # DMI, Google Maps, Twilio, SendGrid, Syncfusion, JWT – sæt i .env.local og i Vercel env.
 # Se VERCEL-ENV.md for fuld liste.

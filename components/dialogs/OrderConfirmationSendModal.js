@@ -297,7 +297,7 @@ const OrderConfirmationSendModal = ({ task, user, open, onClose, onSent }) => {
               <a href={sentConfirmUrl} target="_blank" rel="noopener noreferrer" className="text-sm break-all text-blue-600 hover:underline block mb-2">
                 {sentConfirmUrl}
               </a>
-              <p className="text-xs text-gray-500">Hvis linket ikke åbner, tjek at PORTAL_PUBLIC_URL i .env.local peger på hvor appen kører (fx https://portal.smartrep.nu eller jeres deployment-URL).</p>
+              <p className="text-xs text-gray-500">Hvis linket ikke åbner, tjek at PORTAL_PUBLIC_URL i .env.local peger på hvor appen kører (fx https://kundeportal.smartrep.nu eller jeres deployment-URL).</p>
             </div>
             <DialogFooter>
               <Button onClick={onClose}>Luk</Button>

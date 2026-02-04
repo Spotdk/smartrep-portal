@@ -1,8 +1,13 @@
-# Deploy SMARTREP-portalen på Vercel (helt nyt repo + nyt projekt)
+# Deploy SMARTREP-portalen på Vercel (subdomain kundeportal.smartrep.nu)
 
-Portalen skal køre på fx **portal.smartrep.nu**, så ordrebekræftelser (link i SMS/email) virker. I har allerede Vercel og www.smartrep.nu.
+Portalen skal køre på **kundeportal.smartrep.nu**, så ordrebekræftelser (link i SMS/email) virker. I har allerede Vercel og www.smartrep.nu.
 
-**Anbefaling:** Opret et **helt nyt** GitHub-repo og et **nyt** Vercel-projekt til portalen. Så slipper I for at blande det sammen med det repo Emergent oprettede, og det er nemmere at overskue.
+**Det vi anbefaler = det Vercel anbefaler:** Et **eget Vercel-projekt** til portalen (Import Git → vælg `Spotdk/smartrep-portal`), og subdomænet **kundeportal.smartrep.nu** tilknyttet det projekt. Så har I:
+- Portalen opdateres uafhængigt af hovedsiden (smartrep.nu)
+- Samme branding via smartrep.nu-domænet (kundeportal.smartrep.nu)
+- Adgang til portal-repo uden at røre hovedsiden
+
+“Nyt projekt” betyder altså: ét nyt **Vercel-projekt** (portalen), ikke et nyt Vercel-account. Hovedsiden (www.smartrep.nu) forbliver sit eget projekt.
 
 ---
 
@@ -79,7 +84,7 @@ Vercel bygger og giver et link fx **https://smartrep-portal-xxx.vercel.app**.
 
 - **PORTAL_PUBLIC_URL** og **NEXT_PUBLIC_BASE_URL:**  
   Brug det URL Vercel lige gav (fx `https://smartrep-portal-xxx.vercel.app`).  
-  Når I har tilføjet domænet portal.smartrep.nu (Trin 5), kan I skifte begge til `https://portal.smartrep.nu`.
+  Når I har tilføjet domænet kundeportal.smartrep.nu (Trin 5), kan I skifte begge til `https://kundeportal.smartrep.nu`.
 - **MONGO_URL:** Samme database som I bruger (fx fra .env.local).
 
 4. **Save** for hver variabel.
@@ -87,15 +92,21 @@ Vercel bygger og giver et link fx **https://smartrep-portal-xxx.vercel.app**.
 
 ---
 
-## Trin 5: Knyt portal.smartrep.nu (anbefalet)
+## Trin 5: Knyt kundeportal.smartrep.nu (anbefalet)
 
 1. I Vercel: **smartrep-portal** → **Settings** → **Domains**.
-2. **Add** → skriv **portal.smartrep.nu**.
+2. **Add** → skriv **kundeportal.smartrep.nu**.
 3. Følg Vercels anvisninger (CNAME hos domæne-udbyder).
-4. Når domænet virker: opdater **PORTAL_PUBLIC_URL** og **NEXT_PUBLIC_BASE_URL** til **https://portal.smartrep.nu**.
+4. Når domænet virker: opdater **PORTAL_PUBLIC_URL** og **NEXT_PUBLIC_BASE_URL** til **https://kundeportal.smartrep.nu**.
 5. **Redeploy** igen.
 
-Så kan kunden åbne linket i ordrebekræftelsen på **https://portal.smartrep.nu/confirm/...**.
+Så kan kunden åbne linket i ordrebekræftelsen på **https://kundeportal.smartrep.nu/confirm/...**.
+
+---
+
+## Trin 6: Link fra hovedsiden (smartrep.nu)
+
+Tilføj evt. et **«Kundeportal»**-link i headeren på www.smartrep.nu der peger på `https://kundeportal.smartrep.nu`. Det gøres i **hovedsidens** repo/kode (smartrep.nu), ikke i dette portal-repo. Så har I delt branding og tydelig adgang til portalen fra hovedsiden.
 
 ---
 
@@ -116,6 +127,6 @@ Første gang: `npx vercel login`. Derefter: `npm run deploy`.
 | 2 | I denne mappe: `git remote add origin <NY-REPO-URL>` og `git push -u origin main` |
 | 3 | I Vercel: **Add New → Project** → vælg det **nye** repo → Deploy |
 | 4 | Tilføj env fra **VERCEL-ENV.md** → Redeploy |
-| 5 | (Valgfrit) Tilføj domænet **portal.smartrep.nu** under Domains |
+| 5 | (Valgfrit) Tilføj domænet **kundeportal.smartrep.nu** under Domains |
 
 Efter det har I ét tydeligt repo og ét Vercel-projekt til portalen – uden at blande med det gamle Emergent-setup.
