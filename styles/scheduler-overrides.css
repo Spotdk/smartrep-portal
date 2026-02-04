@@ -1,0 +1,99 @@
+/* Core visual rules to match provided design (Syncfusion AI official) */
+
+/* Import Syncfusion CSS */
+@import '@syncfusion/ej2-base/styles/material.css';
+@import '@syncfusion/ej2-buttons/styles/material.css';
+@import '@syncfusion/ej2-calendars/styles/material.css';
+@import '@syncfusion/ej2-dropdowns/styles/material.css';
+@import '@syncfusion/ej2-inputs/styles/material.css';
+@import '@syncfusion/ej2-lists/styles/material.css';
+@import '@syncfusion/ej2-navigations/styles/material.css';
+@import '@syncfusion/ej2-popups/styles/material.css';
+@import '@syncfusion/ej2-react-schedule/styles/material.css';
+
+/* Ensure hour-row height = 60px (1 hour) */
+.smartrep-schedule .e-time-cells-wrap table td,
+.smartrep-schedule .e-content-wrap table td {
+  height: 60px !important;
+}
+
+/* Appointment template full height */
+.smartrep-schedule .e-appointment .e-template {
+  display: block !important;
+  height: 100% !important;
+  overflow: visible !important;
+}
+
+/* Draft (KLADDE) */
+.smartrep-schedule .e-appointment.draft-task,
+.smartrep-schedule .e-appointment.draft-task .e-appointment-details {
+  background-color: #87CEEB !important;
+  border-color: #5DADE2 !important;
+  border: 1px solid #5DADE2 !important;
+  color: #000 !important;
+  background-image: none !important;
+}
+
+/* Locked (PLANLAGT) */
+.smartrep-schedule .e-appointment.locked-task,
+.smartrep-schedule .e-appointment.locked-task .e-appointment-details {
+  background-color: #90EE90 !important;
+  border-color: #58D68D !important;
+  border: 1px solid #58D68D !important;
+  color: #000 !important;
+  background-image: none !important;
+}
+
+/* Travel events - beige, dashed, clickable */
+.smartrep-schedule .e-appointment.travel-event,
+.smartrep-schedule .e-appointment.travel-event .e-appointment-details {
+  background-color: #F5F5DC !important;
+  border: 1px dashed #D2B48C !important;
+  color: #8B4513 !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  text-align: center !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
+}
+
+/* Prevent travel bars from being draggable */
+.smartrep-schedule .e-appointment.travel-event { 
+  pointer-events: auto !important;
+}
+
+/* Hide default subject/time so custom template is primary */
+.smartrep-schedule .e-appointment .e-subject,
+.smartrep-schedule .e-appointment .e-time,
+.smartrep-schedule .e-appointment .e-location,
+.smartrep-schedule .e-appointment .e-description { 
+  display: none !important;
+}
+
+/* Drag clone styling */
+.smartrep-schedule .e-appointment.e-appointment-clone { 
+  opacity: 0.9 !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.18) !important;
+}
+
+/* Highlight droppable cell */
+.smartrep-schedule .e-work-cells.e-droppable { 
+  background-color: rgba(1,51,255,0.06) !important;
+  border: 2px dashed #0133ff !important;
+}
+
+/* Ensure appointment border radius and spacing */
+.smartrep-schedule .e-appointment { 
+  border-radius: 8px !important;
+  box-sizing: border-box !important;
+  padding: 0 !important;
+}
+
+/* Ensure travel template content uses full height */
+.smartrep-schedule .smartrep-travel-content { 
+  height: 100% !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

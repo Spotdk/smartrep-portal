@@ -1,0 +1,772 @@
+/*
+  planlaeg.css
+  Styling der matcher "Infobjælker.png" designet 1:1
+*/
+
+/* ===== CONTAINER ===== */
+.planlaeg-container {
+  min-height: 100vh;
+  background: #F5F5F5;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ===== HEADER ===== */
+.planlaeg-header {
+  display: flex;
+  align-items: center;
+  padding: 16px 24px;
+  background: #fff;
+  border-bottom: 1px solid #E0E0E0;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-icon {
+  font-size: 24px;
+}
+
+.header-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+  color: #1a1a1a;
+}
+
+/* ===== CONTENT LAYOUT ===== */
+.planlaeg-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ===== JOB POOL SIDEBAR ===== */
+.job-pool-sidebar {
+  width: 320px;
+  background: #fff;
+  border-right: 1px solid #E0E0E0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pool-header {
+  padding: 20px;
+  border-bottom: 1px solid #E0E0E0;
+}
+
+.pool-header h2 {
+  margin: 0 0 6px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.pool-header p {
+  margin: 0;
+  font-size: 14px;
+  color: #666;
+}
+
+.tech-selector {
+  padding: 16px 20px;
+  border-bottom: 1px solid #E0E0E0;
+}
+
+.tech-selector label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.tech-selector select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #D0D0D0;
+  border-radius: 8px;
+  font-size: 14px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.pool-tasks {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pool-tasks.drop-zone-active {
+  background: rgba(1, 51, 255, 0.04);
+}
+
+/* ===== POOL CARD ===== */
+.pool-card {
+  background: #fff;
+  border: 1px solid #E0E0E0;
+  border-left: 4px solid #0133FF;
+  border-radius: 10px;
+  padding: 14px;
+  cursor: grab;
+  transition: all 0.15s ease;
+}
+
+.pool-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
+}
+
+.pool-card-dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+.pool-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.pool-task-number {
+  font-weight: 700;
+  font-size: 15px;
+  color: #1a1a1a;
+}
+
+.pool-duration {
+  background: #F0F0F0;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #666;
+}
+
+.pool-weather {
+  margin-left: 6px;
+  font-size: 16px;
+}
+
+.pool-btn-vis {
+  margin-left: auto;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #0133FF;
+  background: rgba(1, 51, 255, 0.1);
+  border: 1px solid #0133FF;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pool-btn-vis:hover {
+  background: rgba(1, 51, 255, 0.2);
+}
+
+.pool-card-customer {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1a1a1a;
+  margin-bottom: 4px;
+}
+
+.pool-card-address {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 10px;
+}
+
+.address-pin {
+  color: #EF4444;
+}
+
+.pool-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.pool-categories {
+  display: flex;
+  gap: 4px;
+}
+
+.pool-tag {
+  background: #E8E8E8;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #555;
+}
+
+.pool-id-days {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+/* ===== CALENDAR SECTION ===== */
+.calendar-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Week Navigation */
+.week-nav {
+  display: flex;
+  gap: 8px;
+  padding: 12px 20px;
+  background: #fff;
+  border-bottom: 1px solid #E0E0E0;
+}
+
+.nav-btn {
+  padding: 8px 16px;
+  border: 1px solid #D0D0D0;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.nav-btn:hover {
+  background: #F5F5F5;
+}
+
+.nav-today {
+  font-weight: 600;
+}
+
+/* Calendar Grid */
+.calendar-grid {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fff;
+}
+
+.calendar-header {
+  display: grid;
+  grid-template-columns: 100px repeat(5, 1fr);
+  border-bottom: 2px solid #E0E0E0;
+  background: #FAFAFA;
+}
+
+.calendar-cell {
+  padding: 12px;
+}
+
+.header-cell {
+  text-align: center;
+}
+
+.tech-header {
+  font-size: 11px;
+  font-weight: 700;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.day-header {
+  border-left: 1px solid #E0E0E0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.day-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1a1a1a;
+}
+
+.day-date {
+  font-size: 12px;
+  color: #888;
+}
+
+.calendar-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 100px repeat(5, 1fr);
+  overflow-y: auto;
+}
+
+.tech-name-cell {
+  padding: 16px 12px;
+  font-weight: 600;
+  font-size: 14px;
+  color: #1a1a1a;
+  background: #FAFAFA;
+  border-right: 1px solid #E0E0E0;
+}
+
+/* Day Column */
+.day-column {
+  border-left: 1px solid #E0E0E0;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 500px;
+  transition: all 0.15s ease;
+}
+
+.day-column-dragover {
+  background: rgba(1, 51, 255, 0.04);
+  outline: 2px dashed rgba(1, 51, 255, 0.3);
+  outline-offset: -4px;
+}
+
+.empty-day {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #999;
+  font-size: 13px;
+  border: 2px dashed #E0E0E0;
+  border-radius: 8px;
+  margin: 4px;
+}
+
+/* ===== TASK CARD ===== */
+.task-card {
+  border-radius: 10px;
+  padding: 12px;
+  cursor: grab;
+  transition: all 0.15s ease;
+  margin-bottom: 0;
+}
+
+.task-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.task-card-dragging {
+  cursor: grabbing;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  transform: rotate(2deg);
+}
+
+/* Draft = Lyseblå */
+.task-card-draft {
+  background: #87CEEB;
+  border: 1px solid #5DADE2;
+}
+
+/* Locked/Planned = Lysegrøn */
+.task-card-locked {
+  background: #90EE90;
+  border: 1px solid #58D68D;
+}
+
+/* Task Card Rows */
+.task-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Header row */
+.task-header {
+  margin-bottom: 8px;
+}
+
+.task-number {
+  font-weight: 700;
+  font-size: 15px;
+  color: #1a1a1a;
+}
+
+.task-status-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.status-draft {
+  background: #334155;
+  color: #fff;
+}
+
+.status-locked {
+  background: #166534;
+  color: #fff;
+}
+
+.task-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.action-btn {
+  background: rgba(255, 255, 255, 0.6);
+  border: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.15s ease;
+}
+
+.action-btn:hover {
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.btn-pool {
+  font-weight: 600;
+  color: #0133FF;
+}
+
+.btn-icon {
+  font-size: 14px;
+}
+
+/* Time row */
+.task-time-row {
+  margin-bottom: 8px;
+}
+
+.lock-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 2px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lock-btn:hover {
+  background: rgba(255, 255, 255, 0.5);
+  transform: scale(1.1);
+}
+
+.task-time {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1a1a1a;
+}
+
+.task-duration {
+  font-size: 12px;
+  color: #555;
+  background: rgba(0, 0, 0, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.task-id-days {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+/* Customer row */
+.task-customer {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1a1a1a;
+  margin-bottom: 4px;
+}
+
+/* Location row */
+.task-location {
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.location-pin {
+  color: #EF4444;
+}
+
+.location-city {
+  color: #333;
+}
+
+.location-type-badge {
+  background: rgba(0, 0, 0, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #444;
+  margin-left: 6px;
+}
+
+/* Categories row */
+.task-categories {
+  margin-top: 4px;
+}
+
+.category-tag {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  margin-right: 4px;
+  margin-bottom: 4px;
+}
+
+/* Opgavetype-tags (PLA / GLA / ALU / BUN osv.) – tydelig lilla som infobjælker */
+.task-type-tag {
+  background: #6B21A8 !important;
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  margin-right: 4px;
+  margin-bottom: 4px;
+}
+
+/* ===== TRAVEL BAR ===== */
+.travel-bar {
+  background: #FEF9E7;
+  border: 1px dashed #D4A017;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 6px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.travel-bar:hover {
+  background: #FCF3CF;
+  transform: scale(1.01);
+}
+
+.travel-from-home,
+.travel-to-home {
+  background: #EBF5FB;
+  border-color: #5DADE2;
+}
+
+.travel-from-home:hover,
+.travel-to-home:hover {
+  background: #D6EAF8;
+}
+
+.travel-loading {
+  background: #F0F0F0;
+  border-color: #CCC;
+  cursor: wait;
+}
+
+.travel-loading .travel-text {
+  color: #999;
+}
+
+.travel-icon {
+  font-size: 14px;
+}
+
+.travel-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #7D6608;
+}
+
+.travel-from-home .travel-text,
+.travel-to-home .travel-text {
+  color: #2874A6;
+}
+
+/* ===== ROUTE POPOVER ===== */
+.route-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.route-popover {
+  background: #fff;
+  border-radius: 16px;
+  width: 90%;
+  max-width: 550px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.route-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: #0133FF;
+  color: #fff;
+}
+
+.route-title {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.route-close {
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  opacity: 0.8;
+  transition: opacity 0.15s ease;
+}
+
+.route-close:hover {
+  opacity: 1;
+}
+
+.route-addresses {
+  padding: 16px 20px;
+  border-bottom: 1px solid #E0E0E0;
+}
+
+.route-address {
+  font-size: 14px;
+  color: #333;
+  margin-bottom: 6px;
+}
+
+.route-address:last-child {
+  margin-bottom: 0;
+}
+
+.route-stats {
+  display: flex;
+  gap: 24px;
+  padding: 12px 20px;
+  background: #F9F9F9;
+  border-bottom: 1px solid #E0E0E0;
+}
+
+.route-stat {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.route-map {
+  padding: 16px;
+}
+
+.route-map iframe {
+  border-radius: 8px;
+}
+
+.route-map-fallback {
+  background: #F5F5F5;
+  border-radius: 8px;
+  padding: 40px;
+  text-align: center;
+}
+
+.route-map-fallback p {
+  color: #666;
+  margin-bottom: 16px;
+}
+
+.route-map-link {
+  display: inline-block;
+  background: #0133FF;
+  color: #fff;
+  padding: 12px 24px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  transition: background 0.15s ease;
+}
+
+.route-map-link:hover {
+  background: #0028CC;
+}
+
+.route-footer {
+  padding: 12px 20px;
+  border-top: 1px solid #E0E0E0;
+  text-align: center;
+}
+
+.route-external-link {
+  color: #0133FF;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.route-external-link:hover {
+  text-decoration: underline;
+}
+
+/* ===== DRAG OVERLAY ===== */
+.drag-overlay-card {
+  opacity: 0.95;
+  transform: rotate(3deg);
+  pointer-events: none;
+}
+
+/* ===== SCROLLBAR ===== */
+.pool-tasks::-webkit-scrollbar,
+.calendar-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.pool-tasks::-webkit-scrollbar-track,
+.calendar-body::-webkit-scrollbar-track {
+  background: #F5F5F5;
+}
+
+.pool-tasks::-webkit-scrollbar-thumb,
+.calendar-body::-webkit-scrollbar-thumb {
+  background: #D0D0D0;
+  border-radius: 4px;
+}
+
+.pool-tasks::-webkit-scrollbar-thumb:hover,
+.calendar-body::-webkit-scrollbar-thumb:hover {
+  background: #B0B0B0;
+}

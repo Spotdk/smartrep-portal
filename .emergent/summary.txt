@@ -1,0 +1,178 @@
+<analysis>
+<original_problem_statement>
+The user wants to build a unified, full-stack customer portal and order management web app using Next.js.
+
+**PRODUCT REQUIREMENTS (Based on initial request and subsequent additions):**
+
+*   **User Roles & Portals:**
+    *   **Customers:** Log in to a portal to create/track tasks and communicate with the office via a chat feature.
+    *   **Admin:** Log in to an admin portal to manage customers, tasks, planning, approvals, invoicing, and system settings.
+    *   **Technicians:** Use a mobile web app to view tasks and mark them complete. This role has new requirements:
+        *   A mobile-optimized Create Task form with a Find my location button, Google Places Autocomplete, and manual address fields.
+        *   A task list view similar to the admin portal, but without status change buttons.
+        *   A Nearest Me view sorting tasks by proximity to the technician's current location.
+        *   Ability to add BEFORE and AFTER photos for each damage item on a task.
+
+*   **Core Features:**
+    *   **Task Management:**
+        *   Create, track, and manage tasks.
+        *   The Create Task dialog for Admins has been enhanced with: a note field per damage item, Deadline fields, and Type radio buttons.
+        *   The Task Detail dialog for Admins is now almost fully editable.
+    *   **Bygherre (Homeowner) Communication Flow:** A comprehensive system for communicating with property owners via SMS and unique, token-based public web pages. This includes sending various notifications, handling homeowner responses, and tracking communication status in the admin UI.
+    *   **PDF Generation (Arbejdskort):** A long-standing requirement to generate a printable A4 work order from a task. A design has been provided by the user. The PDF needs a QR code linking to the digital task. The task numbering sequence should start from 85.
+    *   **Email Notifications:** Branded HTML email templates for new messages, photo reports, and user invitations.
+
+</original_problem_statement>
+**User's preferred language**: Danish. The user writes exclusively in Danish. The next agent MUST respond in Danish.
+
+**what currently exists?**
+A monolithic Next.js application where the frontend logic is almost entirely in  and backend in . The application is currently **UNSTABLE AND UNRUNNABLE** in the development environment. The main frontend file, , has grown to over 7300 lines, causing the development server to crash with out-of-memory errors. The previous agent correctly diagnosed this and began a critical refactoring process, but it is far from complete.
+
+**Last working item**:
+    - Last item agent was working: A critical refactoring of the monolithic  file into smaller, individual React components. The user explicitly requested this to solve the constant server crashes. The agent had started creating new directories (, ) and was moving code for shared constants, , , and  into separate files.
+    - Status: IN PROGRESS
+    - Agent Testing Done: N
+    - Which testing method agent to use? NA (The application must be made runnable first by completing the refactor.)
+    - User Testing Done: N
+
+**All Pending/In progress Issue list**:
+  Issue 1: (P0 - CRITICAL BLOCKER) Application is not runnable in development mode.
+  
+  Issues Detail:
+  - Issue 1: 
+     - Attempted fixes: The previous agent correctly identified that  is too large to be compiled by the Next.js development server within the available memory, causing . Attempts to switch to production mode were thwarted by the environment's  process restarting the app in dev mode. The only viable solution, which was started, is to refactor the monolithic file.
+     - Next debug checklist: This is not a debugging issue but a large, in-progress task. The next agent must **continue the refactoring** started by the previous agent.
+     - Why fix this issue and what will be achieved with the fix? This is a **total blocker**. No development, testing, or verification can happen until the application is stable and runnable again. Completing the refactor will restore the development environment and make future work possible.
+     - Status:  IN PROGRESS
+     - Is recurring issue? Y
+     - Should Test frontend/backend/both after fix? both
+     - Blocked on other issue: This issue blocks all other tasks.
+
+**In progress Task List**:
+  Task 1: (P0) Complete the refactoring of .
+  
+  Task Detail:
+  - Task 1: 
+     - Where to resume: 
+        1. The previous agent created the following files/directories:
+            - 
+            - 
+            - 
+            - Was in the process of extracting .
+        2. The next agent must systematically continue this process. Analyze  and extract all major components into their own files. A suggested structure is:
+            - 
+            - 
+            - 
+            - 
+            - 
+            - 
+            - etc.
+        3. Once all components are extracted, rewrite  to be a simple top-level component that imports and orchestrates the new child components, managing shared state as needed.
+     - What will be achieved with this? A stable, maintainable codebase that can run in the development environment without crashing. This unblocks all other work.
+     - Status:  IN PROGRESS
+     - Should Test frontend/backend/both after fix? both
+     - Blocked on something: This task is the highest priority and is not blocked.
+
+**Upcoming and Future Tasks**
+*   **P1: Verify Post-Refactor Functionality:** After the refactor is complete, a full regression test is needed to ensure all features added in the last session still work. This includes the Technician app, editable Task Details, new Create Task fields, and all Bygherre communication flows.
+*   **P1: PDF Work Card ():** The initial setup is done (,  page, button in UI), but it needs to be fully tested and verified against the user's provided design. The data binding between the task and the template needs to be confirmed.
+*   **P2: FØR/EFTER Photos for Technicians:** The user requested that technicians be able to add Before and After photos for *each specific damage item* on a task. This is a new feature that has not been started. It will require UI changes in the technician app and backend changes to the data model to link images to damage line items.
+*   **P2: Implement User Invitation Email:** The email template () and  helper exist, but there is no UI or endpoint to trigger sending an invitation to a new user. This needs to be implemented.
+*   **P3: Invoicing ():** A core requirement from the beginning that is still not fully implemented.
+
+**Completed work in this session**
+- **Technician App V1:** Built a functional task list () and a mobile-friendly Create Task form with GPS location capabilities.
+- **Admin Task Dialogs Enhanced:**
+    -  was updated with a note field per damage item, Deadline fields, and Type radio buttons with correct values.
+    -  was rewritten to be almost fully editable, and the layout was adjusted to always show Type/Deadline info.
+- **Bygherre Communication Flow Fixed:**
+    - Corrected SMS sender ID to SMARTREP across all sends.
+    - Fixed SMS message content and broken URL links.
+    - Fixed the logic for the megafon icon, so it only shows for pending responses.
+    - Fixed a critical bug where homeowner responses were not being saved permanently and the pending status was not cleared.
+    - Implemented the missing Final Confirmation SMS logic.
+- **Data Integrity and UI Polish:**
+    - Fixed a bug where the  would not automatically refresh with new data after saving edits.
+- **Email Templates:** Created and integrated branded HTML email templates for new messages and photo reports, along with a central  helper.
+- **PDF Work Card Foundation:** Created the component, page, and API endpoint for the PDF work card based on the user's design files. Set the task numbering sequence to start from 85.
+
+**Earlier issues found/mentioned but not fixed**
+   - The core issue of the monolithic file structure was present for a long time but is only now being addressed because it has become a critical blocker.
+
+**Code Architecture**
+
+
+**Key Technical Concepts**
+-   **Framework:** Next.js 14 (App Router)
+-   **Database:** MongoDB
+-   **Critical Problem:** **Out-of-Memory crashes** in the Next.js dev server due to an overly large monolithic component ().
+-   **Current Solution:** **Code Refactoring**. Breaking the monolith into smaller, manageable React components.
+-   **API:** Monolithic API route handler in .
+-   **3rd Party:** Twilio (SMS), SendGrid (Email), Leaflet.js (Maps),  (PDF generation),  (QR codes).
+
+**All files of reference**
+-   : **CRITICAL**. The source of the current instability. It is the target of the ongoing refactoring task. Do not add new features to it; only extract code from it.
+-   : **CRITICAL**. The backend monolith. It has been heavily modified and contains all business logic.
+-   : **IMPORTANT**. This directory contains the new, refactored components. The next agent will be creating many more files here.
+-   : **IMPORTANT**. This directory contains shared helper functions and constants extracted from .
+
+**Areas that need refactoring**:
+-   **CRITICAL**:  must be completely dismantled into smaller components. This is the current, active, blocking task.
+-   **HIGHLY RECOMMENDED**: After the frontend is stabilized,  should also be refactored into separate files per API resource for maintainability. This should be proposed to the user as a next major step after the current crisis is resolved.
+
+**Critical Info for New Agent**
+1.  **YOUR ONLY PRIORITY IS THE REFACTOR.** The application is currently broken and cannot be run in the development environment. Do not attempt to add features or fix other bugs. You must continue the refactoring of  that the previous agent started.
+2.  **REFACTORING STRATEGY:** Continue extracting logical chunks of UI (Views, Dialogs, etc.) from  into their own files under . Then, clean up  to be a simple container that imports and renders these new components.
+3.  **USER AWARENESS:** The user is aware of the technical problem (the file is too big) and has explicitly approved the refactoring solution. They are also aware that the preview is broken because of this.
+4.  **POST-REFACTOR:** Once the app is stable, you must perform a thorough regression test of all the features implemented recently before moving on to new tasks like the FØR/EFTER photos or user invitations.
+
+**documents created in this job**
+- /app/components/WorkOrderTemplate.js
+- /app/app/arbejdskort/[taskId]/page.js
+- /app/lib/constants.js
+- /app/lib/emailTemplates.js
+- /app/components/shared/WeatherIcon.js
+- /app/components/shared/LoginPage.js
+
+**Last 10 User Messages and any pending HUMAN messages**
+- **LATEST (514):** User is worried because the agent's UI for resuming a session seems to have lost some context (doesn't remember the repo). This is a meta-question about the agent's stability. (UNANSWERED)
+- **(497):** User gives clear instruction to refactor  into separate components to solve the server crashing issue. (IN PROGRESS)
+- **(495):** User asks for an explanation of supervisor and why the app is crashing. (ADDRESSED)
+- **(493):** User confirms the preview is working after the agent started the server in production mode. Asks about deploying to Vercel. (ADDRESSED)
+- **(478):** User reports Web server returned an unknown error again, asks if deploying to Vercel would help. (ADDRESSED)
+- **(451):** User reports Web server returned an unknown error after agent's attempt to fix the server. (ADDRESSED)
+- **(359):** User reports they can no longer see the preview. This is the start of the server-crashing issue. (ADDRESSED)
+- **(326):** User enthusiastically agrees to the agent's proposal to build clean HTML email templates. (COMPLETED)
+- **(321):** User provides a logo file and asks for advice on designing branded email templates (invitation, photo report). (COMPLETED)
+- **(276):** User provides a .zip file with the design/code for the PDF work card and asks to set the next task number to 85. (COMPLETED - foundation laid)
+
+**Project Health Check:**
+-   **Broken**: The entire application is in a broken, non-runnable state in the development environment due to out-of-memory crashes. A critical refactor is underway to fix this.
+-   **Mocked**: No mocked components.
+
+**3rd Party Integrations**
+-   **Twilio**: Requires User API Key. Used for SMS notifications to homeowners.
+-   **SendGrid**: Requires User API Key. Used for email notifications.
+-   **DMI Vejr API**: Requires User API Key.
+-   **SyncFusion**: Requires User API Key.
+-   **Google Maps (Places API)**: Requires User API Key.
+-   **Leaflet.js / react-leaflet**: Open-source, no key required.
+
+**Testing status**
+  - Testing agent used after significant changes: NO (Not possible in current state)
+  - Troubleshoot agent used after agent stuck in loop: NO (The agent debugged the memory issue extensively but did not call the troubleshooter before the session ended).
+  - Test files created: []
+  - Known regressions: The entire application is non-functional in dev mode.
+
+**Credentials to test flow:**
+| Role | Email | Password |
+|---|---|---|
+| Admin | admin1@smartrep.nu | Admin123 |
+| Kunde (Customer) | kunde@huscompagniet.dk | admin123 |
+| Tekniker (Technician)| tekniker@smartrep.dk | admin123 |
+
+**What agent forgot to execute**
+- The agent has not started the FØR/EFTER (Before/After) photo upload feature for technicians, which was part of the PDF work card request.
+- The agent was forced to abandon all other work to address the critical out-of-memory issue, so all other upcoming tasks were necessarily deferred.
+
+</analysis>
