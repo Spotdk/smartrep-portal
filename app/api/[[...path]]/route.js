@@ -3739,12 +3739,12 @@ async function handleRoute(request, { params }) {
 
   } catch (error) {
     console.error('API Error:', error)
-    const msg = error?.message || ''
-    const isDbError = !process.env.MONGO_URL ||
-      /connect|ECONNREFUSED|MongoServerError|getaddrinfo|ENOTFOUND|authentication failed/i.test(msg)
+    const msg = error?.message || String(error)
+    const isDbError = !process.env.MONGO_URL?.trim() ||
+      /connect|ECONNREFUSED|MongoServerError|MongoNetworkError|getaddrinfo|ENOTFOUND|authentication failed|timed out|ETIMEDOUT/i.test(msg)
     const userMessage = isDbError
       ? 'Kunne ikke forbinde til database. Tjek at MONGO_URL, DB_NAME og JWT_SECRET er sat i Vercel, og at MongoDB Atlas tillader adgang (Network Access: Allow from anywhere).'
-      : 'Internal server error'
+      : (msg ? `Fejl: ${msg.substring(0, 200)}` : 'Internal server error')
     return handleCORS(NextResponse.json(
       { error: userMessage, details: msg },
       { status: 500 }
