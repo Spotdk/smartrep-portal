@@ -260,7 +260,13 @@ const EmailTemplates = {
 
 async function connectToMongo() {
   if (!client) {
-    client = new MongoClient(process.env.MONGO_URL)
+    const uri = process.env.MONGO_URL
+    const options = {
+      serverSelectionTimeoutMS: 15000,
+      tls: true,
+      tlsAllowInvalidCertificates: false
+    }
+    client = new MongoClient(uri, options)
     await client.connect()
     db = client.db(process.env.DB_NAME || 'smartrep_portal')
   }
