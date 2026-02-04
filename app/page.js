@@ -35,32 +35,30 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [notifications, setNotifications] = useState({ unreadMessages: 0, newTasks: 0, tasksWithMessages: [] })
 
-  // Fetch notification counts
+  // Fetch notification counts – robust mod API-fejl så én fejl ikke bryder portalen
   const fetchNotifications = async () => {
     if (!user) return
+    const fallback = { unreadMessages: 0, newTasks: 0, tasksWithMessages: [] }
     try {
-      // Get unread message count
-      const messagesData = await api.get('/messages/unread-count')
-      
-      // Get new tasks count (awaiting_confirmation)
-      const countsData = await api.get('/tasks/counts')
-      const newTasksCount = countsData?.awaiting_confirmation || 0
-      
-      // Get task IDs that have associated messages from customers
-      const messagesWithTasks = await api.get('/messages')
+      const [messagesData, countsData, messagesWithTasks] = await Promise.allSettled([
+        api.get('/messages/unread-count'),
+        api.get('/tasks/counts'),
+        api.get('/messages')
+      ])
+      const unread = messagesData.status === 'fulfilled' ? messagesData.value?.count ?? 0 : 0
+      const newTasks = countsData.status === 'fulfilled' ? (countsData.value?.awaiting_confirmation ?? 0) : 0
+      const list = messagesWithTasks.status === 'fulfilled' && Array.isArray(messagesWithTasks.value)
+        ? messagesWithTasks.value
+        : []
       const taskIdsWithMessages = [...new Set(
-        messagesWithTasks
-          .filter(m => m.taskId && m.fromUserRole === 'customer')
+        list
+          .filter(m => m?.taskId && m?.fromUserRole === 'customer')
           .map(m => m.taskId)
       )]
-      
-      setNotifications({
-        unreadMessages: messagesData?.count || 0,
-        newTasks: newTasksCount,
-        tasksWithMessages: taskIdsWithMessages
-      })
+      setNotifications({ unreadMessages: unread, newTasks, tasksWithMessages: taskIdsWithMessages })
     } catch (err) {
       console.error('Error fetching notifications:', err)
+      setNotifications(fallback)
     }
   }
 

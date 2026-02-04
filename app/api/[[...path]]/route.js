@@ -5,9 +5,10 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import twilio from 'twilio'
 
-// MongoDB connection
+// MongoDB connection – brug connectPromise for at undgå race conditions og undefined db
 let client
 let db
+let connectPromise = null
 
 // Twilio client
 let twilioClient
@@ -259,18 +260,37 @@ const EmailTemplates = {
 }
 
 async function connectToMongo() {
-  if (!client) {
-    const uri = process.env.MONGO_URL
-    const options = {
-      serverSelectionTimeoutMS: 15000,
-      tls: true,
-      tlsAllowInvalidCertificates: false
-    }
-    client = new MongoClient(uri, options)
-    await client.connect()
-    db = client.db(process.env.DB_NAME || 'smartrep_portal')
+  // Return cached db hvis vi allerede har en gyldig forbindelse
+  if (db) return db
+
+  // Serialiser forbindelsesforsøg – undgå race hvor client sættes men db aldrig bliver sat
+  if (!connectPromise) {
+    connectPromise = (async () => {
+      const uri = process.env.MONGO_URL
+      const options = {
+        serverSelectionTimeoutMS: 15000,
+        tls: true,
+        tlsAllowInvalidCertificates: false
+      }
+      const c = new MongoClient(uri, options)
+      await c.connect()
+      const database = c.db(process.env.DB_NAME || 'smartrep_portal')
+      client = c
+      db = database
+      return database
+    })()
   }
-  return db
+
+  try {
+    const result = await connectPromise
+    if (!result) throw new Error('Database connection returned undefined')
+    return result
+  } catch (err) {
+    connectPromise = null
+    client = null
+    db = null
+    throw err
+  }
 }
 
 // Initialize default data
