@@ -23,7 +23,7 @@ Brug kun **én** adresse (fx **kundeportal.smartrep.nu** eller **portal.smartrep
 
 | Name | Value |
 |------|--------|
-| **MONGO_URL** | `mongodb+srv://tools_db_user:Tools134@smartrep.f46rxay.mongodb.net/smartrep_portal?appName=smartrep` (brug dit eget password hvis du har skiftet det) |
+| **MONGO_URL** | `mongodb+srv://tools_db_user:DIT_PASSWORD@smartrep.f46rxay.mongodb.net/smartrep_portal?authSource=admin` |
 | **DB_NAME** | `smartrep_portal` |
 | **JWT_SECRET** | En lang hemmelig streng (fx 32+ tilfældige tegn). Samme som i .env.local er fint. |
 
