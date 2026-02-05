@@ -96,7 +96,7 @@ export default function Sidebar({ user, activeView, setActiveView, collapsed, se
       <div className="p-4 border-t border-gray-800">
         <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'}`}>
           <Avatar className="w-9 h-9" style={{ backgroundColor: BRAND_BLUE }}>
-            <AvatarFallback className="text-white text-sm" style={{ backgroundColor: BRAND_BLUE }}>{user?.name?.split(' ').map(n => n[0]).join('').slice(0, 2)}</AvatarFallback>
+            <AvatarFallback className="text-white text-sm" style={{ backgroundColor: BRAND_BLUE }}>{(user?.name || '').split(' ').map(n => n[0]).join('').slice(0, 2) || '?'}</AvatarFallback>
           </Avatar>
           {!collapsed && (
             <div className="flex-1 min-w-0">

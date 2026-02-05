@@ -37,7 +37,7 @@ export default function Header({ user, onLogout, title, collapsed, setCollapsed 
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="flex items-center gap-2">
             <Avatar className="w-8 h-8" style={{ backgroundColor: BRAND_BLUE }}>
-              <AvatarFallback className="text-white text-xs" style={{ backgroundColor: BRAND_BLUE }}>{user?.name?.split(' ').map(n => n[0]).join('').slice(0, 2)}</AvatarFallback>
+              <AvatarFallback className="text-white text-xs" style={{ backgroundColor: BRAND_BLUE }}>{(user?.name || '').split(' ').map(n => n[0]).join('').slice(0, 2) || '?'}</AvatarFallback>
             </Avatar>
             <span className="hidden md:inline text-sm font-medium">{user?.name}</span>
           </Button>
