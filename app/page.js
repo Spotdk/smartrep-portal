@@ -24,6 +24,8 @@ import PhotoReportsView from '@/components/views/PhotoReportsView'
 import PriceListView from '@/components/views/PriceListView'
 import InvoicesView from '@/components/views/InvoicesView'
 import ApiKeysView from '@/components/views/ApiKeysView'
+import FirmainfoView from '@/components/views/FirmainfoView'
+import SkabelonerView from '@/components/views/SkabelonerView'
 import DataFieldsView from '@/components/views/DataFieldsView'
 import TechnicianTasksView from '@/components/views/TechnicianTasksView'
 import UsersView from '@/components/views/UsersView'
@@ -101,6 +103,8 @@ export default function App() {
       invoices: 'Fakturering',
       users: 'Brugere',
       apikeys: 'API Keys',
+      skabeloner: 'Skabeloner',
+      firmainfo: 'Firmainfo',
       datafields: 'Datafelter',
       messages: 'Beskeder'
     }
@@ -125,6 +129,8 @@ export default function App() {
       // Indstillinger
       case 'users': return <UsersView />
       case 'apikeys': return <ApiKeysView />
+      case 'skabeloner': return <SkabelonerView />
+      case 'firmainfo': return <FirmainfoView />
       case 'datafields': return <DataFieldsView />
       default: return <Dashboard user={user} />
     }

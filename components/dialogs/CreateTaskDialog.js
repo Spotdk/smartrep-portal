@@ -38,6 +38,21 @@ const CreateTaskDialog = ({ open, onClose, options, companies, user, onCreated }
   const fileInputRef = useRef(null)
   const addressInputRef = useRef(null)
 
+  // Ved kunde: sæt firma når dialogen åbnes, så kontaktliste og upload virker
+  useEffect(() => {
+    if (open && user?.role === 'customer' && user?.companyId) {
+      setFormData(prev => ({ ...prev, companyId: user.companyId, companyName: user.companyName || '' }))
+      const loadContacts = async () => {
+        try {
+          const users = await api.get('/users')
+          const contacts = users.filter(u => u.companyId === user.companyId && u.role === 'customer')
+          setCompanyContacts(contacts)
+        } catch (err) { console.error(err) }
+      }
+      loadContacts()
+    }
+  }, [open, user?.role, user?.companyId, user?.companyName])
+
   // Load contacts when company changes
   const handleCompanyChange = async (companyId) => {
     const company = companies.find(c => c.id === companyId)
@@ -197,15 +212,18 @@ const CreateTaskDialog = ({ open, onClose, options, companies, user, onCreated }
       
       try {
         const result = await uploadFile(file)
-        newFiles.push({
-          id: result.file.id,
-          name: result.file.originalName,
-          url: result.file.url,
-          type: file.type.startsWith('image/') ? 'image' : 'document'
-        })
+        if (result?.file?.id) {
+          newFiles.push({
+            id: result.file.id,
+            name: result.file.originalName || file.name,
+            url: result.file.url,
+            type: file.type.startsWith('image/') ? 'image' : 'document'
+          })
+        }
       } catch (err) {
         console.error('Upload fejl:', err)
-        alert(`Fejl ved upload af ${file.name}`)
+        const msg = err?.message || (typeof err === 'string' ? err : 'Upload fejlede')
+        alert(`Fejl ved upload af ${file.name}: ${msg}`)
       }
     }
     
@@ -447,49 +465,53 @@ const CreateTaskDialog = ({ open, onClose, options, companies, user, onCreated }
             </div>
           </div>
           
-          {/* Task Type Section – flere tags, ingen begrænsning (checkboxes) */}
-          <div className="space-y-3 p-4 bg-gray-50 rounded-lg border">
-            <Label className="font-medium">Type (vælg én eller flere)</Label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {(options?.taskTypes || [
-                { value: 'PLA', label: 'PLA (Plast)' },
-                { value: 'BUN', label: 'BUN (Bundstykke)' },
-                { value: 'GLA', label: 'GLA (Glas)' },
-                { value: 'ALU', label: 'ALU (Aluminium)' },
-                { value: 'TRÆ', label: 'TRÆ (Træ)' },
-                { value: 'COA', label: 'COA (Coating)' },
-                { value: 'INS', label: 'INS (Isolering)' },
-                { value: 'REN', label: 'REN (Rengøring)' }
-              ]).map(type => {
-                const selected = (formData.types || []).includes(type.value)
-                return (
-                  <div key={type.value} className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id={`type_${type.value}`}
-                      checked={selected}
-                      onChange={() => {
-                        setFormData(prev => {
-                          const current = prev.types || []
-                          const next = current.includes(type.value)
-                            ? current.filter(t => t !== type.value)
-                            : [...current, type.value]
-                          return { ...prev, types: next }
-                        })
-                      }}
-                      className="w-4 h-4 rounded border-gray-300 text-blue-600 cursor-pointer"
-                    />
-                    <Label htmlFor={`type_${type.value}`} className="cursor-pointer text-sm">{type.label || type.value}</Label>
-                  </div>
-                )
-              })}
+          {/* Task Type Section – skjult for kunde */}
+          {user?.role !== 'customer' && (
+            <div className="space-y-3 p-4 bg-gray-50 rounded-lg border">
+              <Label className="font-medium">Type (vælg én eller flere)</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                {(options?.taskTypes || [
+                  { value: 'PLA', label: 'PLA (Plast)' },
+                  { value: 'BUN', label: 'BUN (Bundstykke)' },
+                  { value: 'GLA', label: 'GLA (Glas)' },
+                  { value: 'ALU', label: 'ALU (Aluminium)' },
+                  { value: 'TRÆ', label: 'TRÆ (Træ)' },
+                  { value: 'COA', label: 'COA (Coating)' },
+                  { value: 'INS', label: 'INS (Isolering)' },
+                  { value: 'REN', label: 'REN (Rengøring)' }
+                ]).map(type => {
+                  const selected = (formData.types || []).includes(type.value)
+                  return (
+                    <div key={type.value} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id={`type_${type.value}`}
+                        checked={selected}
+                        onChange={() => {
+                          setFormData(prev => {
+                            const current = prev.types || []
+                            const next = current.includes(type.value)
+                              ? current.filter(t => t !== type.value)
+                              : [...current, type.value]
+                            return { ...prev, types: next }
+                          })
+                        }}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 cursor-pointer"
+                      />
+                      <Label htmlFor={`type_${type.value}`} className="cursor-pointer text-sm">{type.label || type.value}</Label>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
-          </div>
-          
-          <div className="grid grid-cols-3 gap-4">
+          )}
+
+          <div className={`grid gap-4 ${user?.role === 'customer' ? 'grid-cols-2' : 'grid-cols-3'}`}>
             <div><Label>Kategori</Label><Select value={formData.category} onValueChange={(v) => setFormData(prev => ({ ...prev, category: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="foraflevering">Foraflevering</SelectItem><SelectItem value="service">Service</SelectItem><SelectItem value="oevrig">Øvrig</SelectItem></SelectContent></Select></div>
             <div><Label>Vejr</Label><Select value={formData.weatherType} onValueChange={(v) => setFormData(prev => ({ ...prev, weatherType: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="sun">Kræver tørvejr</SelectItem><SelectItem value="rain">Regnvejr OK</SelectItem><SelectItem value="both">Blandet</SelectItem></SelectContent></Select></div>
-            <div><Label>Est. tid</Label><Select value={formData.estimatedTime.toString()} onValueChange={(v) => setFormData(prev => ({ ...prev, estimatedTime: parseInt(v) }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{[1,2,3,4,5,6,7,8].map(n => <SelectItem key={n} value={n.toString()}>{n} timer</SelectItem>)}</SelectContent></Select></div>
+            {user?.role !== 'customer' && (
+              <div><Label>Est. tid</Label><Select value={formData.estimatedTime.toString()} onValueChange={(v) => setFormData(prev => ({ ...prev, estimatedTime: parseInt(v) }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{[1,2,3,4,5,6,7,8].map(n => <SelectItem key={n} value={n.toString()}>{n} timer</SelectItem>)}</SelectContent></Select></div>
+            )}
           </div>
           <div>
             <div className="flex items-center justify-between mb-2"><Label>Skader ({formData.damages.length})</Label><Button variant="outline" size="sm" onClick={() => setShowDamageForm(true)}><Plus className="w-4 h-4 mr-1" />Tilføj skade</Button></div>
@@ -605,7 +627,9 @@ const CreateTaskDialog = ({ open, onClose, options, companies, user, onCreated }
           </div>
           
           <div><Label>Opgave opsummering</Label><Textarea placeholder="Kort opsummering af opgaven (synlig for kunder i kundeportal)" value={formData.taskSummary} onChange={(e) => setFormData(prev => ({ ...prev, taskSummary: e.target.value }))} /></div>
-          <div><Label>Bemærkninger (Kun synlig internt)</Label><Textarea placeholder="Eventuelle interne bemærkninger..." value={formData.notes} onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))} /></div>
+          {user?.role !== 'customer' && (
+            <div><Label>Bemærkninger (Kun synlig internt)</Label><Textarea placeholder="Eventuelle interne bemærkninger..." value={formData.notes} onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))} /></div>
+          )}
         </div>
         <DialogFooter><Button variant="outline" onClick={onClose}>Annuller</Button><Button onClick={handleSubmit} disabled={loading || uploadingFiles} className="text-white" style={{ backgroundColor: BRAND_BLUE }}>{loading && <Loader2 className="w-4 h-4 animate-spin mr-2" />}Opret opgave</Button></DialogFooter>
       </DialogContent>

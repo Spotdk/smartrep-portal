@@ -23,6 +23,11 @@ export default function VaelgDatoPage() {
   const [remarks, setRemarks] = useState('')
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [firmainfo, setFirmainfo] = useState(null)
+
+  useEffect(() => {
+    fetch('/api/firmainfo/public').then(r => r.json()).then(setFirmainfo).catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (token) {
@@ -430,8 +435,9 @@ export default function VaelgDatoPage() {
       {/* Footer */}
       <footer className="bg-white border-t border-gray-100 mt-12">
         <div className="max-w-3xl mx-auto px-4 py-6 text-center">
-          <img src={LOGO_URL} alt="SMARTREP" className="h-6 w-auto mx-auto mb-2 opacity-40" />
+          <img src={LOGO_URL} alt={firmainfo?.companyName || 'SMARTREP'} className="h-6 w-auto mx-auto mb-2 opacity-40" />
           <p className="text-sm text-gray-400">Finish til byggebranchen</p>
+          <p className="text-xs text-gray-400 mt-1">{firmainfo?.companyName || 'SMARTREP'} · CVR {firmainfo?.cvr || '25808436'}</p>
         </div>
       </footer>
     </div>

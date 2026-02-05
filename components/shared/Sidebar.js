@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { 
   Building2, ClipboardList, Calendar, Map, Cloud, MessageSquare, FileImage,
-  Home, ChevronLeft, List, Receipt, Key, Database, Users
+  Home, ChevronLeft, List, Receipt, Key, Database, Users, Building, FileStack
 } from 'lucide-react'
 import { BRAND_BLUE } from '@/lib/constants'
 
@@ -26,6 +26,8 @@ export default function Sidebar({ user, activeView, setActiveView, collapsed, se
     { id: 'invoices', label: 'Fakturering', icon: Receipt, roles: ['admin'] },
     // Indstillinger sektion  
     { id: 'divider-settings', type: 'divider', label: 'INDSTILLINGER', roles: ['admin'] },
+    { id: 'skabeloner', label: 'Skabeloner', icon: FileStack, roles: ['admin'] },
+    { id: 'firmainfo', label: 'Firmainfo', icon: Building, roles: ['admin'] },
     { id: 'users', label: 'Brugere', icon: Users, roles: ['admin'] },
     { id: 'apikeys', label: 'API Keys', icon: Key, roles: ['admin'] },
     { id: 'datafields', label: 'Datafelter', icon: Database, roles: ['admin'] },

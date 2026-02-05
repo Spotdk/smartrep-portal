@@ -26,11 +26,16 @@ export default function FotorapportReviewPage() {
   const [reviewerName, setReviewerName] = useState('')
   const [damages, setDamages] = useState([])
   const [expandedDamages, setExpandedDamages] = useState({})
+  const [firmainfo, setFirmainfo] = useState(null)
   
   // Signature canvas
   const canvasRef = useRef(null)
   const [isDrawing, setIsDrawing] = useState(false)
   const [hasSignature, setHasSignature] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/firmainfo/public').then(r => r.json()).then(setFirmainfo).catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (token) {
@@ -534,7 +539,7 @@ export default function FotorapportReviewPage() {
         {/* Footer */}
         <div className="text-center py-6">
           <p className="text-xs text-gray-400">
-            SMARTREP ApS • www.smartrep.nu • +45 8282 2572
+            {firmainfo?.companyName || 'SMARTREP'} · CVR {firmainfo?.cvr || '25808436'} · {firmainfo?.phone || '+45 82 82 25 72'}
           </p>
         </div>
       </main>

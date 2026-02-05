@@ -15,16 +15,18 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import { 
   Plus, Trash2, Send, Clock, Lock, Phone, Mail, MapPin, User, ChevronDown, AlertCircle, CheckCircle,
-  Loader2, X, RefreshCw, Navigation, Printer, Pencil, UserPlus, UserCheck, History, FileText, ExternalLink
+  Loader2, X, RefreshCw, Navigation, Printer, Pencil, UserPlus, UserCheck, History, FileText, ExternalLink, BarChart3
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { da } from 'date-fns/locale'
 import { api, BRAND_BLUE, STATUS_CONFIG, getIdDaysColor } from '@/lib/constants'
 import { formatAddress, taskAddressString } from '@/lib/utils'
 import WeatherIcon from '@/components/shared/WeatherIcon'
+import WeatherStatusWidget from '@/components/weather/WeatherStatusWidget'
 
 // Lazy load sub-sections
 const TaskCommunicationSection = dynamic(() => import('./TaskCommunicationSection'), { ssr: false, loading: () => null })
+const WeatherReportModal = dynamic(() => import('@/components/weather/WeatherReportModal'), { ssr: false, loading: () => null })
 const TaskInvoiceSection = dynamic(() => import('./TaskInvoiceSection'), { ssr: false, loading: () => null })
 const TaskLogSection = dynamic(() => import('./TaskLogSection'), { ssr: false, loading: () => null })
 const OrderConfirmationSendModal = dynamic(() => import('./OrderConfirmationSendModal'), { ssr: false, loading: () => null })
@@ -48,6 +50,7 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
   const [resendTestBaseUrl, setResendTestBaseUrl] = useState('')
   const [resendResult, setResendResult] = useState(null)
   const [testDeliveryLoading, setTestDeliveryLoading] = useState(false)
+  const [showWeatherReportModal, setShowWeatherReportModal] = useState(false)
 
   // Initialize edit data when task changes or editing starts
   useEffect(() => {
@@ -474,6 +477,13 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
                 )}
               </div>
             </div>
+
+            {/* Vejrstatus-widget (DMI-baseret) */}
+            {!isEditing && task && (
+              <div className="col-span-full">
+                <WeatherStatusWidget task={task} />
+              </div>
+            )}
             
             {/* Damages - Editable */}
             <div>
@@ -842,6 +852,16 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
               <Printer className="w-5 h-5" />
               <span className="font-medium">Arbejdskort PDF</span>
             </a>
+            {user?.role === 'admin' && (
+              <Button
+                onClick={() => setShowWeatherReportModal(true)}
+                className="w-full justify-center gap-2 text-white"
+                style={{ backgroundColor: BRAND_BLUE }}
+              >
+                <BarChart3 className="w-5 h-5" />
+                <span className="font-medium">Opret Vejranalyse</span>
+              </Button>
+            )}
           </div>
         </div>
 
@@ -948,6 +968,16 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
             open={showOrderConfirmationModal}
             onClose={() => setShowOrderConfirmationModal(false)}
             onSent={handleOrderConfirmationSent}
+          />
+        )}
+        {/* Vejranalyse modal */}
+        {task && (
+          <WeatherReportModal
+            task={task}
+            user={user}
+            open={showWeatherReportModal}
+            onClose={() => setShowWeatherReportModal(false)}
+            onGenerated={() => {}}
           />
         )}
 

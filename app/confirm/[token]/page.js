@@ -16,6 +16,11 @@ export default function ConfirmOrderPage() {
   const [itemChoices, setItemChoices] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [firmainfo, setFirmainfo] = useState(null)
+
+  useEffect(() => {
+    fetch('/api/firmainfo/public').then(r => r.json()).then(setFirmainfo).catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (token) {
@@ -315,7 +320,7 @@ export default function ConfirmOrderPage() {
             <div className="text-center py-4 px-4 bg-gray-50 rounded-lg border border-gray-200">
               <p className="text-sm text-gray-600">
                 Ved accept accepteres{' '}
-                <a href="https://www.smartrep.nu/vilkaar" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-medium">
+                <a href="/vilkaar" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-medium">
                   SMARTREPs standardvilkår for lakeringsydelser og reklamation
                 </a>
               </p>
@@ -354,7 +359,8 @@ export default function ConfirmOrderPage() {
           </div>
 
           <footer className="px-6 py-4 border-t text-center text-sm text-gray-500">
-            Spørgsmål? Kontakt os på 82 82 25 72 eller info@smartrep.nu
+            <p>Spørgsmål? Kontakt os på {firmainfo?.phone || '82 82 25 72'} eller {firmainfo?.email || 'info@smartrep.nu'}</p>
+            <p className="mt-1">{firmainfo?.companyName || 'SMARTREP'} · CVR {firmainfo?.cvr || '25808436'}</p>
           </footer>
 
           <div className="bg-[#1a1a2e] py-5 px-6 text-center">

@@ -64,6 +64,158 @@ function formatTimeSlotForSMS(slot) {
 const JWT_SECRET = process.env.JWT_SECRET || 'smartrep_secret'
 const BRAND_BLUE = '#0133FF'
 
+// Vejranalyse – klassifikation (samme logik som lib/weatherClassifier.js)
+function classifyDayForApi(weather) {
+  const temp_avg = Number(weather?.temp_avg) ?? 10
+  const wind_max = Number(weather?.wind_max) ?? 0
+  const precipitation_mm = Number(weather?.precipitation_mm) ?? 0
+  const humidity_avg = Number(weather?.humidity_avg) ?? 70
+  if (temp_avg < 5) return { status: 'RED', icon: '🔴', reason: 'Frost/kulde' }
+  if (wind_max > 8) return { status: 'RED', icon: '🔴', reason: 'Storm' }
+  if (precipitation_mm > 5) return { status: 'RED', icon: '🔴', reason: 'Regn' }
+  if (humidity_avg > 85) return { status: 'RED', icon: '🔴', reason: 'Høj luftfugtighed' }
+  if (wind_max > 5) return { status: 'YELLOW', icon: '🟡', reason: 'Hård vind' }
+  if (temp_avg < 8) return { status: 'YELLOW', icon: '🟡', reason: 'Lav temperatur' }
+  if (precipitation_mm > 1) return { status: 'YELLOW', icon: '🟡', reason: 'Byger' }
+  if (precipitation_mm > 0) return { status: 'YELLOW', icon: '🟡', reason: 'Let nedbør' }
+  if (humidity_avg > 75) return { status: 'YELLOW', icon: '🟡', reason: 'Høj fugtighed' }
+  return { status: 'GREEN', icon: '🟢', reason: 'Gode forhold' }
+}
+function isWorkday(date) {
+  const d = new Date(date)
+  const day = d.getDay()
+  return day >= 1 && day <= 5
+}
+
+const DMI_CLIMATE_BASE = 'https://dmigw.govcloud.dk/v2/climateData/collections/10kmGridValue/items'
+const WEATHER_ICONS = ['☀️', '🌤', '☁️', '🌥', '🌧', '🌦', '❄️', '💨']
+
+function iconFromData(temp, precip, wind) {
+  if (temp < 2) return '❄️'
+  if ((precip || 0) > 5) return '🌧'
+  if ((precip || 0) > 0) return '🌦'
+  if ((wind || 0) > 8) return '💨'
+  if ((wind || 0) > 5) return '🌥'
+  return (precip || 0) > 0 ? '🌤' : '☀️'
+}
+
+function descFromData(temp, precip, wind) {
+  if ((precip || 0) > 5) return 'Regn'
+  if ((precip || 0) > 0) return 'Byger'
+  if ((wind || 0) > 8) return 'Storm/vind'
+  if ((wind || 0) > 5) return 'Vind'
+  if (temp < 5) return 'Koldt'
+  return 'Tørt'
+}
+
+/** Hent daglige vejrdata fra DMI Climate Data (10km grid). Returnerer array af { date, temp_avg, ... } eller tom array ved fejl. */
+async function fetchDmiDailyWeather(lat, lon, startDate, endDate) {
+  const apiKey = process.env.DMI_API_KEY
+  if (!apiKey) return []
+  const lon1 = (lon - 0.06).toFixed(4)
+  const lat1 = (lat - 0.06).toFixed(4)
+  const lon2 = (lon + 0.06).toFixed(4)
+  const lat2 = (lat + 0.06).toFixed(4)
+  const bbox = `${lon1},${lat1},${lon2},${lat2}`
+  const datetime = `${startDate}T00:00:00+01:00/${endDate}T23:59:59+01:00`
+  const params = { bbox, datetime, timeResolution: 'day', limit: 500 }
+  const paramsStr = new URLSearchParams(params).toString()
+
+  const parameters = [
+    'mean_temp',
+    'min_temp',
+    'mean_daily_max_temp',
+    'acc_precip',
+    'mean_wind_speed',
+    'max_wind_speed_10min',
+    'mean_relative_hum'
+  ]
+  const byDate = {}
+  try {
+    const results = await Promise.all(
+      parameters.map(async (parameterId) => {
+        const url = `${DMI_CLIMATE_BASE}?${paramsStr}&parameterId=${parameterId}&api-key=${apiKey}`
+        const res = await fetch(url, { headers: { Accept: 'application/geo+json' } })
+        if (!res.ok) return []
+        const data = await res.json()
+        return (data.features || []).map((f) => ({
+          date: (f.properties?.from || '').slice(0, 10),
+          param: parameterId,
+          value: f.properties?.value
+        }))
+      })
+    )
+    for (const rows of results) {
+      for (const { date, param, value } of rows) {
+        if (!date || value === undefined) continue
+        if (!byDate[date]) byDate[date] = {}
+        byDate[date][param] = value
+      }
+    }
+    const days = []
+    const dayNames = ['Søndag', 'Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lørdag']
+    for (const date of Object.keys(byDate).sort()) {
+      const row = byDate[date]
+      const temp_avg = row.mean_temp != null ? Number(row.mean_temp) : null
+      const temp_min = row.min_temp != null ? Number(row.min_temp) : (temp_avg != null ? temp_avg - 2 : null)
+      const temp_max = row.mean_daily_max_temp != null ? Number(row.mean_daily_max_temp) : (temp_avg != null ? temp_avg + 2 : null)
+      const precipitation_mm = row.acc_precip != null ? Number(row.acc_precip) : 0
+      const wind_avg = row.mean_wind_speed != null ? Number(row.mean_wind_speed) : null
+      const wind_max = row.max_wind_speed_10min != null ? Number(row.max_wind_speed_10min) : (wind_avg != null ? wind_avg * 1.3 : null)
+      const humidity_avg = row.mean_relative_hum != null ? Math.round(Number(row.mean_relative_hum)) : null
+      const classified = classifyDayForApi({
+        temp_avg: temp_avg ?? 10,
+        wind_max: wind_max ?? 0,
+        precipitation_mm,
+        humidity_avg: humidity_avg ?? 70
+      })
+      const tempVal = temp_avg ?? 10
+      days.push({
+        date,
+        day_name: dayNames[new Date(date + 'T12:00:00').getDay()],
+        temp_avg: temp_avg != null ? Math.round(temp_avg * 10) / 10 : null,
+        temp_min: temp_min != null ? Math.round(temp_min * 10) / 10 : null,
+        temp_max: temp_max != null ? Math.round(temp_max * 10) / 10 : null,
+        wind_avg: wind_avg != null ? Math.round(wind_avg * 10) / 10 : null,
+        wind_max: wind_max != null ? Math.round(wind_max * 10) / 10 : null,
+        wind_gust: wind_max != null ? Math.round((wind_max * 1.2) * 10) / 10 : null,
+        precipitation_mm: Math.round(precipitation_mm * 10) / 10,
+        humidity_avg: humidity_avg ?? null,
+        weather_icon: iconFromData(tempVal, precipitation_mm, wind_max),
+        weather_desc: descFromData(tempVal, precipitation_mm, wind_max),
+        status: classified.status,
+        status_reason: classified.reason
+      })
+    }
+    return days
+  } catch (err) {
+    console.error('DMI Climate Data fetch error:', err)
+    return []
+  }
+}
+
+/** Ved manglende DMI-data: returner en dag med status UNKNOWN (ingen opdigtede tal). */
+function getDailyWeatherUnavailable(dateStr, isFuture) {
+  const dayNames = ['Søndag', 'Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lørdag']
+  return {
+    date: dateStr,
+    day_name: dayNames[new Date(dateStr + 'T12:00:00').getDay()],
+    data_source: isFuture ? 'forecast_unavailable' : 'unavailable',
+    temp_avg: null,
+    temp_min: null,
+    temp_max: null,
+    wind_avg: null,
+    wind_max: null,
+    wind_gust: null,
+    precipitation_mm: null,
+    humidity_avg: null,
+    weather_icon: '❓',
+    weather_desc: isFuture ? 'Prognose ikke tilgængelig' : 'Data ikke tilgængelig',
+    status: 'UNKNOWN',
+    status_reason: isFuture ? 'Prognose ikke tilgængelig (DMI har kun historik)' : 'Historisk data ikke tilgængelig for denne dag'
+  }
+}
+
 // Email template helper functions
 function getEmailBaseTemplate(content, previewText = '') {
   return `<!DOCTYPE html>
@@ -1213,9 +1365,33 @@ async function handleRoute(request, { params }) {
       return handleCORS(NextResponse.json(counts))
     }
 
-    // Get single task - GET /api/tasks/:id
+    // Get single task - GET /api/tasks/:id (taskId 'demo' = dummydata til skabelonvisning)
     if (route.startsWith('/tasks/') && method === 'GET' && path.length === 2) {
       const taskId = path[1]
+      if (taskId === 'demo') {
+        const demoTask = {
+          id: 'demo',
+          taskNumber: '2025-SKAB',
+          companyName: 'Eksempel Byg A/S',
+          contactName: 'Anders Andersen',
+          contactPhone: '12 34 56 78',
+          address: 'Eksempelvej 42',
+          postalCode: '7000',
+          city: 'Fredericia',
+          deadline: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+          plannedDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          estimatedTime: 4,
+          taskType: 'lakering',
+          weatherType: 'sun',
+          damages: [
+            { part: 'bundstykke', quantity: 2, color: 'hvid', location: 'stue', notes: 'Slid' },
+            { part: 'ramme', quantity: 1, color: 'anthracite', location: 'koekken', notes: '' }
+          ],
+          owner1Name: 'Bygherre 1',
+          owner1Phone: '98 76 54 32'
+        }
+        return handleCORS(NextResponse.json(demoTask))
+      }
       const task = await db.collection('tasks').findOne({ id: taskId })
       if (!task) {
         return handleCORS(NextResponse.json({ error: 'Opgave ikke fundet' }, { status: 404 }))
@@ -1706,10 +1882,28 @@ async function handleRoute(request, { params }) {
       return handleCORS(NextResponse.json({ success: true, message: 'Rapport nulstillet' }))
     }
 
-    // Public: Get report by review token - GET /api/photoreports/public/:token
+    // Public: Get report by review token - GET /api/photoreports/public/:token (token 'demo' = skabelon med dummydata)
     if (route.match(/^\/photoreports\/public\/[^/]+$/) && method === 'GET') {
       const token = path[2]
-      
+      if (token === 'demo') {
+        const demoReport = {
+          id: 'demo',
+          taskId: 'demo',
+          reviewToken: 'demo',
+          status: 'pending',
+          address: 'Eksempelvej 42',
+          postalCode: '7000',
+          city: 'Fredericia',
+          createdByName: 'Tekniker Demo',
+          createdAt: new Date(),
+          task: { taskNumber: '2025-SKAB', address: 'Eksempelvej 42', postalCode: '7000', city: 'Fredericia', companyName: 'Eksempel Byg A/S' },
+          damages: [
+            { id: 'd1', description: 'Ridse bundstykke', status: 'pending', imageUrl: null, notes: 'Dummydata' },
+            { id: 'd2', description: 'Slid ramme', status: 'pending', imageUrl: null, notes: '' }
+          ]
+        }
+        return handleCORS(NextResponse.json(demoReport))
+      }
       const report = await db.collection('photo_reports').findOne({ reviewToken: token })
       if (!report) {
         return handleCORS(NextResponse.json({ error: 'Rapport ikke fundet' }, { status: 404 }))
@@ -1734,6 +1928,7 @@ async function handleRoute(request, { params }) {
     // Public: Submit review - POST /api/photoreports/public/:token/submit
     if (route.match(/^\/photoreports\/public\/[^/]+\/submit$/) && method === 'POST') {
       const token = path[2]
+      if (token === 'demo') return handleCORS(NextResponse.json({ success: true }))
       const body = await request.json()
       
       const report = await db.collection('photo_reports').findOne({ reviewToken: token })
@@ -1989,6 +2184,157 @@ async function handleRoute(request, { params }) {
           ]
         }))
       }
+    }
+
+    // ============ VEJRANALYSE ============
+    // GET /api/weather/analysis?lat=&lon=&start=&end=&workdaysOnly= (bruger DMI Climate Data 10km grid)
+    if (route === '/weather/analysis' && method === 'GET') {
+      const user = getUserFromToken(request)
+      if (!user) return handleCORS(NextResponse.json({ error: 'Ikke autoriseret' }, { status: 401 }))
+      const url = new URL(request.url)
+      const lat = parseFloat(url.searchParams.get('lat')) || 55.5
+      const lon = parseFloat(url.searchParams.get('lon')) || 10.4
+      const startStr = url.searchParams.get('start')
+      const endStr = url.searchParams.get('end')
+      const workdaysOnly = url.searchParams.get('workdaysOnly') !== 'false'
+      const start = startStr ? new Date(startStr) : new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
+      const end = endStr ? new Date(endStr) : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
+      const dayNames = ['Søndag', 'Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lørdag']
+      const dateList = []
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dateStr = d.toISOString().slice(0, 10)
+        if (workdaysOnly && !isWorkday(dateStr)) continue
+        dateList.push(dateStr)
+      }
+      const rangeStart = start.toISOString().slice(0, 10)
+      const rangeEnd = end.toISOString().slice(0, 10)
+      const dmiDays = await fetchDmiDailyWeather(lat, lon, rangeStart, rangeEnd)
+      const dmiByDate = Object.fromEntries((dmiDays || []).map((day) => [day.date, day]))
+      const todayStr = new Date().toISOString().slice(0, 10)
+      const days = dateList.map((dateStr) => {
+        const fromDmi = dmiByDate[dateStr]
+        if (fromDmi) return fromDmi
+        return getDailyWeatherUnavailable(dateStr, dateStr > todayStr)
+      })
+      const withData = days.filter(x => x.status !== 'UNKNOWN')
+      const greenCount = days.filter(x => x.status === 'GREEN').length
+      const yellowCount = days.filter(x => x.status === 'YELLOW').length
+      const redCount = days.filter(x => x.status === 'RED').length
+      const successRatePct = withData.length ? Math.round((greenCount / withData.length) * 100) : 0
+      const rainDays = days.filter(x => (x.precipitation_mm || 0) > 5).length
+      const windDays = days.filter(x => (x.wind_max || 0) > 5).length
+      const frostDays = days.filter(x => (x.temp_avg || 10) < 5).length
+      const humidityDays = days.filter(x => (x.humidity_avg || 0) > 85).length
+      return handleCORS(NextResponse.json({
+        days,
+        summary: {
+          total_days: days.length,
+          green_days: greenCount,
+          yellow_days: yellowCount,
+          red_days: redCount,
+          success_rate: successRatePct,
+          rain_days: rainDays,
+          wind_days: windDays,
+          frost_days: frostDays,
+          humidity_days: humidityDays
+        }
+      }))
+    }
+
+    // POST /api/weather-report/generate – opret vejranalyse-rapport
+    if (route === '/weather-report/generate' && method === 'POST') {
+      const user = getUserFromToken(request)
+      if (!user || user.role !== 'admin') return handleCORS(NextResponse.json({ error: 'Ikke autoriseret' }, { status: 401 }))
+      const body = await request.json()
+      const { taskId, periodType = '14_days', workdaysOnly = true } = body
+      const task = await db.collection('tasks').findOne({ id: taskId })
+      if (!task) return handleCORS(NextResponse.json({ error: 'Opgave ikke fundet' }, { status: 404 }))
+      const lat = task.latitude ?? 55.5
+      const lon = task.longitude ?? 10.4
+      const created = task.createdAt ? new Date(task.createdAt) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+      let start = new Date(created)
+      const end = new Date()
+      if (periodType === '7_days') start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000)
+      else if (periodType === '14_days') start = new Date(end.getTime() - 14 * 24 * 60 * 60 * 1000)
+      else if (periodType === '21_days') start = new Date(end.getTime() - 21 * 24 * 60 * 60 * 1000)
+      else if (periodType === '28_days') start = new Date(end.getTime() - 28 * 24 * 60 * 60 * 1000)
+      else if (periodType === 'all') start = new Date(created)
+      if (start < created) start = new Date(created)
+      const dayNames = ['Søndag', 'Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lørdag']
+      const dateList = []
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dateStr = d.toISOString().slice(0, 10)
+        if (workdaysOnly && !isWorkday(dateStr)) continue
+        dateList.push(dateStr)
+      }
+      const rangeStart = start.toISOString().slice(0, 10)
+      const rangeEnd = end.toISOString().slice(0, 10)
+      const dmiDays = await fetchDmiDailyWeather(lat, lon, rangeStart, rangeEnd)
+      const dmiByDate = Object.fromEntries((dmiDays || []).map((day) => [day.date, day]))
+      const todayStr = new Date().toISOString().slice(0, 10)
+      const days = dateList.map((dateStr) => {
+        const fromDmi = dmiByDate[dateStr]
+        if (fromDmi) return fromDmi
+        return getDailyWeatherUnavailable(dateStr, dateStr > todayStr)
+      })
+      const withData = days.filter(x => x.status !== 'UNKNOWN')
+      const greenCount = days.filter(x => x.status === 'GREEN').length
+      const yellowCount = days.filter(x => x.status === 'YELLOW').length
+      const redCount = days.filter(x => x.status === 'RED').length
+      const successRatePct = withData.length ? Math.round((greenCount / withData.length) * 100) : 0
+      const publicToken = uuidv4().replace(/-/g, '').slice(0, 16)
+      const report = {
+        id: uuidv4(),
+        taskId: task.id,
+        taskNumber: task.taskNumber,
+        companyName: task.companyName,
+        contactName: task.contactName,
+        contactEmail: task.contactEmail,
+        address: task.address,
+        postalCode: task.postalCode,
+        city: task.city,
+        periodType,
+        workdaysOnly: !!workdaysOnly,
+        periodStart: start.toISOString().slice(0, 10),
+        periodEnd: end.toISOString().slice(0, 10),
+        total_days: days.length,
+        green_days: greenCount,
+        yellow_days: yellowCount,
+        red_days: redCount,
+        success_rate: successRatePct,
+        rain_days: days.filter(x => (x.precipitation_mm || 0) > 5).length,
+        wind_days: days.filter(x => (x.wind_max || 0) > 5).length,
+        frost_days: days.filter(x => (x.temp_avg || 10) < 5).length,
+        humidity_days: days.filter(x => (x.humidity_avg || 0) > 85).length,
+        publicToken,
+        generatedBy: user.id,
+        generatedByName: user.name,
+        createdAt: new Date(),
+        days
+      }
+      await db.collection('weather_reports').insertOne(report)
+      await db.collection('task_logs').insertOne({
+        id: uuidv4(),
+        entityType: 'task',
+        entityId: taskId,
+        taskId,
+        action: 'weather_report_generated',
+        description: `Vejranalyse genereret. Periode: ${report.periodStart} – ${report.periodEnd} (${report.total_days} dage). Succesrate: ${report.success_rate}%`,
+        userId: user.id,
+        userName: user.name,
+        createdAt: new Date()
+      })
+      const { _id, ...rest } = report
+      return handleCORS(NextResponse.json({ ...rest, publicToken }))
+    }
+
+    // GET /api/weather-report/public/:token – public rapport (ingen auth)
+    if (route.match(/^\/weather-report\/public\/[^/]+$/) && method === 'GET') {
+      const token = path[2]
+      const report = await db.collection('weather_reports').findOne({ publicToken: token })
+      if (!report) return handleCORS(NextResponse.json({ error: 'Rapport ikke fundet' }, { status: 404 }))
+      const { _id, ...rest } = report
+      return handleCORS(NextResponse.json(rest))
     }
 
     // ============ OPTIONS/ENUMS ============
@@ -2356,7 +2702,7 @@ async function handleRoute(request, { params }) {
 
     // ============ FILE UPLOAD ============
     
-    // Upload file - POST /api/upload
+    // Upload file - POST /api/upload (alle roller inkl. kunde)
     if (route === '/upload' && method === 'POST') {
       const user = getUserFromToken(request)
       if (!user) {
@@ -2377,22 +2723,32 @@ async function handleRoute(request, { params }) {
 
         const bytes = await file.arrayBuffer()
         const buffer = Buffer.from(bytes)
-
-        // Generate unique filename
+        const fileId = uuidv4()
         const ext = file.name.split('.').pop()
         const filename = `${uuidv4()}.${ext}`
         const filepath = `/uploads/${filename}`
 
-        // Save to public/uploads
-        const fs = await import('fs/promises')
-        await fs.writeFile(`./public${filepath}`, buffer)
+        let urlToReturn = filepath
+        let contentBase64 = null
 
-        // Save file record to database
+        try {
+          const fs = await import('fs/promises')
+          await fs.writeFile(`./public${filepath}`, buffer)
+        } catch (writeErr) {
+          // På Vercel/serverless er public ofte read-only – gem i DB og server via /api/files/serve
+          if (buffer.length > 4 * 1024 * 1024) {
+            return handleCORS(NextResponse.json({ error: 'Filen er for stor til upload i denne miljø (max 4 MB)' }, { status: 413 }))
+          }
+          contentBase64 = buffer.toString('base64')
+          urlToReturn = `/api/files/serve?id=${fileId}`
+        }
+
         const fileRecord = {
-          id: uuidv4(),
+          id: fileId,
           filename: filename,
           originalName: file.name,
-          path: filepath,
+          path: contentBase64 ? null : filepath,
+          contentBase64: contentBase64 || null,
           size: buffer.length,
           mimeType: file.type,
           taskId: taskId || null,
@@ -2406,14 +2762,34 @@ async function handleRoute(request, { params }) {
 
         await db.collection('files').insertOne(fileRecord)
 
-        return handleCORS(NextResponse.json({ 
-          success: true, 
-          file: { ...fileRecord, url: filepath }
+        return handleCORS(NextResponse.json({
+          success: true,
+          file: { ...fileRecord, url: urlToReturn }
         }))
       } catch (error) {
         console.error('Upload error:', error)
         return handleCORS(NextResponse.json({ error: 'Upload fejlede' }, { status: 500 }))
       }
+    }
+
+    // Serve file from DB (for uploads på serverless hvor public er read-only) - GET /api/files/serve?id=xxx
+    if (route === '/files/serve' && method === 'GET') {
+      const url = new URL(request.url)
+      const id = url.searchParams.get('id')
+      if (!id) {
+        return handleCORS(NextResponse.json({ error: 'Mangler id' }, { status: 400 }))
+      }
+      const fileRecord = await db.collection('files').findOne({ id })
+      if (!fileRecord || !fileRecord.contentBase64) {
+        return handleCORS(NextResponse.json({ error: 'Fil ikke fundet' }, { status: 404 }))
+      }
+      const buffer = Buffer.from(fileRecord.contentBase64, 'base64')
+      return new NextResponse(buffer, {
+        headers: {
+          'Content-Type': fileRecord.mimeType || 'application/octet-stream',
+          'Content-Disposition': `inline; filename="${encodeURIComponent(fileRecord.originalName || fileRecord.filename)}"`
+        }
+      })
     }
 
     // Get files - GET /api/files
@@ -2789,8 +3165,86 @@ async function handleRoute(request, { params }) {
     }
 
     // Get order confirmation by token (public) - GET /api/order-confirmation/public/:token
+    // Demo-tokens: demo-standard, demo-udvidet, demo-glas, demo-kemisk (skabelonvisning med dummydata)
     if (route.match(/^\/order-confirmation\/public\/[^/]+$/) && method === 'GET') {
       const token = path[2]
+      const demoTaskInfo = {
+        companyName: 'Eksempel Byg A/S',
+        contactName: 'Anders Andersen',
+        address: 'Eksempelvej 42',
+        postalCode: '7000',
+        city: 'Fredericia',
+        taskNumber: '2025-001',
+        damages: [
+          { part: 'Bundstykke', quantity: 2, color: 'Hvid', location: 'Stue', notes: 'Slid' },
+          { part: 'Ramme', quantity: 1, color: 'Anthracite', location: 'Køkken', notes: '' }
+        ]
+      }
+      const baseItems = [{ type: 'standard', customNote: '', accepted: null, respondedAt: null }]
+      const farFuture = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+      if (token === 'demo-standard') {
+        return handleCORS(NextResponse.json({
+          id: 'demo',
+          taskId: 'demo',
+          token: 'demo-standard',
+          status: 'sent',
+          sentAt: new Date(),
+          respondedAt: null,
+          expiresAt: farFuture,
+          items: baseItems,
+          taskInfo: demoTaskInfo,
+          taskSummary: 'Lakering af bundstykker og ramme. Dette er forhåndsvisning med dummydata.'
+        }))
+      }
+      if (token === 'demo-udvidet') {
+        return handleCORS(NextResponse.json({
+          id: 'demo',
+          taskId: 'demo',
+          token: 'demo-udvidet',
+          status: 'sent',
+          sentAt: new Date(),
+          respondedAt: null,
+          expiresAt: farFuture,
+          items: [...baseItems, { type: 'extended_zone', customNote: '', accepted: null, respondedAt: null }],
+          taskInfo: demoTaskInfo,
+          taskSummary: 'Lakering i udvidet serviceområde. Dummydata.',
+          distance_km: 85,
+          drive_time_minutes: 72,
+          transport_km_rate: 3.75,
+          transport_time_rate: 850,
+          transport_km_amount: 638,
+          transport_time_amount: 1700,
+          transport_total_amount: 2338
+        }))
+      }
+      if (token === 'demo-glas') {
+        return handleCORS(NextResponse.json({
+          id: 'demo',
+          taskId: 'demo',
+          token: 'demo-glas',
+          status: 'sent',
+          sentAt: new Date(),
+          respondedAt: null,
+          expiresAt: farFuture,
+          items: [...baseItems, { type: 'glass_risk', customNote: 'Termorude mod have – begrænset succes mulig.', accepted: null, respondedAt: null }],
+          taskInfo: demoTaskInfo,
+          taskSummary: 'Glaspolering med særlige vilkår. Dummydata.'
+        }))
+      }
+      if (token === 'demo-kemisk') {
+        return handleCORS(NextResponse.json({
+          id: 'demo',
+          taskId: 'demo',
+          token: 'demo-kemisk',
+          status: 'sent',
+          sentAt: new Date(),
+          respondedAt: null,
+          expiresAt: farFuture,
+          items: [...baseItems, { type: 'chemical_cleaning', customNote: 'Hvide aflejringer – vi kan ikke garantere varighed.', accepted: null, respondedAt: null }],
+          taskInfo: demoTaskInfo,
+          taskSummary: 'Kemisk afrensning. Dummydata.'
+        }))
+      }
       const conf = await db.collection('order_confirmations').findOne({ token })
       if (!conf) return handleCORS(NextResponse.json({ error: 'Ugyldig eller udløbet link' }, { status: 404 }))
       if (new Date() > new Date(conf.expiresAt)) return handleCORS(NextResponse.json({ error: 'Linket er udløbet' }, { status: 410 }))
@@ -3359,6 +3813,86 @@ async function handleRoute(request, { params }) {
         { upsert: true }
       )
 
+      return handleCORS(NextResponse.json({ success: true }))
+    }
+
+    // ============ FIRMAINFO ============
+    const DEFAULT_FIRMAINFO = {
+      companyName: 'SMARTREP',
+      address: 'Antonio Costas Vej 15',
+      postcode: '7000',
+      city: 'Fredericia',
+      cvr: '25808436',
+      bank: 'Lunar',
+      regNo: '',
+      account: '',
+      phone: '',
+      email: ''
+    }
+
+    // Public firmainfo (kun felter der må vises på dokumenter) - GET /api/firmainfo/public
+    if (route === '/firmainfo/public' && method === 'GET') {
+      const doc = await db.collection('settings').findOne({ type: 'firmainfo' })
+      const data = doc?.data || {}
+      const out = {
+        companyName: data.companyName ?? DEFAULT_FIRMAINFO.companyName,
+        cvr: data.cvr ?? DEFAULT_FIRMAINFO.cvr,
+        bank: data.bank ?? DEFAULT_FIRMAINFO.bank,
+        regNo: data.regNo ?? DEFAULT_FIRMAINFO.regNo,
+        account: data.account ?? DEFAULT_FIRMAINFO.account,
+        phone: data.phone ?? DEFAULT_FIRMAINFO.phone,
+        email: data.email ?? DEFAULT_FIRMAINFO.email
+      }
+      return handleCORS(NextResponse.json(out))
+    }
+
+    // Get full firmainfo (admin) - GET /api/firmainfo
+    if (route === '/firmainfo' && method === 'GET') {
+      const user = getUserFromToken(request)
+      if (!user || user.role !== 'admin') {
+        return handleCORS(NextResponse.json({ error: 'Ikke autoriseret' }, { status: 401 }))
+      }
+      const doc = await db.collection('settings').findOne({ type: 'firmainfo' })
+      const data = doc?.data || {}
+      const out = {
+        companyName: data.companyName ?? DEFAULT_FIRMAINFO.companyName,
+        address: data.address ?? DEFAULT_FIRMAINFO.address,
+        postcode: data.postcode ?? DEFAULT_FIRMAINFO.postcode,
+        city: data.city ?? DEFAULT_FIRMAINFO.city,
+        cvr: data.cvr ?? DEFAULT_FIRMAINFO.cvr,
+        bank: data.bank ?? DEFAULT_FIRMAINFO.bank,
+        regNo: data.regNo ?? DEFAULT_FIRMAINFO.regNo,
+        account: data.account ?? DEFAULT_FIRMAINFO.account,
+        phone: data.phone ?? DEFAULT_FIRMAINFO.phone,
+        email: data.email ?? DEFAULT_FIRMAINFO.email
+      }
+      return handleCORS(NextResponse.json(out))
+    }
+
+    // Save firmainfo (admin) - PUT /api/firmainfo
+    if (route === '/firmainfo' && method === 'PUT') {
+      const user = getUserFromToken(request)
+      if (!user || user.role !== 'admin') {
+        return handleCORS(NextResponse.json({ error: 'Ikke autoriseret' }, { status: 401 }))
+      }
+      const body = await request.json()
+      const data = {
+        companyName: body.companyName ?? '',
+        address: body.address ?? '',
+        postcode: body.postcode ?? '',
+        city: body.city ?? '',
+        cvr: body.cvr ?? '',
+        bank: body.bank ?? '',
+        regNo: body.regNo ?? '',
+        account: body.account ?? '',
+        phone: body.phone ?? '',
+        email: body.email ?? ''
+      }
+      await db.collection('settings').updateOne(
+        { type: 'firmainfo' },
+        { $set: { type: 'firmainfo', data, updatedAt: new Date(), updatedBy: user.id } },
+        { upsert: true }
+      )
       return handleCORS(NextResponse.json({ success: true }))
     }
 
