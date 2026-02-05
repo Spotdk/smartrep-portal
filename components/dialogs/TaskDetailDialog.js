@@ -256,7 +256,7 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
 
   // Google Maps embed URL
   const taskAddrStr = taskAddressString(task)
-  const mapUrl = taskAddrStr ? `https://www.google.com/maps/embed/v1/place?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY || 'AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU17R8'}&q=${encodeURIComponent([taskAddrStr, task?.postalCode, task?.city, 'Denmark'].filter(Boolean).join(', '))}&zoom=15` : null
+  const mapUrl = taskAddrStr ? `https://www.google.com/maps/embed/v1/place?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}&q=${encodeURIComponent([taskAddrStr, task?.postalCode, task?.city, 'Denmark'].filter(Boolean).join(', '))}&zoom=15` : null
 
   // Display value (from editData if editing, otherwise from task)
   const getValue = (field) => isEditing ? editData[field] : task[field]

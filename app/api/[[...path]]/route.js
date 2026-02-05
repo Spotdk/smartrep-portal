@@ -2617,6 +2617,19 @@ async function handleRoute(request, { params }) {
     // Link i email/SMS til kunde skal være et offentligt URL – brug PORTAL_PUBLIC_URL (fx https://kundeportal.smartrep.nu)
     const BASE_URL = process.env.PORTAL_PUBLIC_URL || process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
 
+    // Get transport rates from price list (KØR + TIM2) - GET /api/order-confirmation/transport-rates
+    if (route === '/order-confirmation/transport-rates' && method === 'GET') {
+      const user = getUserFromToken(request)
+      if (!user || (user.role !== 'admin' && user.role !== 'technician_admin')) {
+        return handleCORS(NextResponse.json({ error: 'Ikke autoriseret' }, { status: 401 }))
+      }
+      const kor = await db.collection('products').findOne({ nr: 'KØR' })
+      const tim2 = await db.collection('products').findOne({ nr: 'TIM2' })
+      const kmRate = kor?.price != null ? Number(kor.price) : 4.75
+      const timeRate = tim2?.price != null ? Number(tim2.price) : 825
+      return handleCORS(NextResponse.json({ kmRate, timeRate }))
+    }
+
     // Send order confirmation - POST /api/order-confirmation/send
     if (route === '/order-confirmation/send' && method === 'POST') {
       const user = getUserFromToken(request)
@@ -2624,9 +2637,31 @@ async function handleRoute(request, { params }) {
         return handleCORS(NextResponse.json({ error: 'Ikke autoriseret' }, { status: 401 }))
       }
       const body = await request.json()
-      const { taskId, serviceZone, taskType, addGlassRisk, addChemicalCleaning, glassNote, chemicalNote, distance_km, drive_time_minutes } = body
+      const { taskId, serviceZone, taskType, addGlassRisk, addChemicalCleaning, glassNote, chemicalNote, distance_km, drive_time_minutes, taskSummary, transport_km_rate, transport_time_rate, transport_km_discount_percent, transport_time_discount_percent } = body
       const task = await db.collection('tasks').findOne({ id: taskId })
       if (!task) return handleCORS(NextResponse.json({ error: 'Opgave ikke fundet' }, { status: 404 }))
+
+      let kmRate = transport_km_rate != null ? Number(transport_km_rate) : null
+      let timeRate = transport_time_rate != null ? Number(transport_time_rate) : null
+      if (serviceZone === 'extended' && (kmRate == null || timeRate == null)) {
+        const kor = await db.collection('products').findOne({ nr: 'KØR' })
+        const tim2 = await db.collection('products').findOne({ nr: 'TIM2' })
+        if (kmRate == null) kmRate = kor?.price != null ? Number(kor.price) : 4.75
+        if (timeRate == null) timeRate = tim2?.price != null ? Number(tim2.price) : 825
+      }
+      const discountKm = Math.min(100, Math.max(0, Number(transport_km_discount_percent) || 0))
+      const discountTime = Math.min(100, Math.max(0, Number(transport_time_discount_percent) || 0))
+      let transport_km_amount = null
+      let transport_time_amount = null
+      let transport_total_amount = null
+      if (serviceZone === 'extended' && distance_km != null && drive_time_minutes != null && kmRate != null && timeRate != null) {
+        const kmTotal = distance_km * 2
+        const excessMinutesPerWay = Math.max(0, drive_time_minutes - 60)
+        const excessHoursTotal = (excessMinutesPerWay * 2) / 60
+        transport_km_amount = Math.round(kmTotal * kmRate * (1 - discountKm / 100))
+        transport_time_amount = Math.round(excessHoursTotal * timeRate * (1 - discountTime / 100))
+        transport_total_amount = transport_km_amount + transport_time_amount
+      }
 
       const token = uuidv4()
       const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
@@ -2658,6 +2693,13 @@ async function handleRoute(request, { params }) {
         chemicalNote: chemicalNote || '',
         distance_km: distance_km ?? null,
         drive_time_minutes: drive_time_minutes ?? null,
+        transport_km_rate: serviceZone === 'extended' ? (kmRate ?? null) : null,
+        transport_time_rate: serviceZone === 'extended' ? (timeRate ?? null) : null,
+        transport_km_discount_percent: serviceZone === 'extended' ? discountKm : null,
+        transport_time_discount_percent: serviceZone === 'extended' ? discountTime : null,
+        transport_km_amount: transport_km_amount ?? null,
+        transport_time_amount: transport_time_amount ?? null,
+        transport_total_amount: transport_total_amount ?? null,
         items,
         sentBy: user.id,
         sentByName: user.name,
@@ -2669,8 +2711,9 @@ async function handleRoute(request, { params }) {
           contactName: task.contactName,
           contactEmail: task.contactEmail,
           taskNumber: task.taskNumber,
-          damages: (task.damages || []).map(d => ({ part: d.part, location: d.location, notes: d.notes, quantity: d.quantity }))
-        }
+          damages: (task.damages || []).map(d => ({ part: d.part, location: d.location, notes: d.notes, quantity: d.quantity ?? 1, color: d.color || null }))
+        },
+        taskSummary: (taskSummary != null && String(taskSummary).trim()) ? String(taskSummary).trim() : ''
       }
       await db.collection('order_confirmations').insertOne(confirmation)
       await db.collection('tasks').updateOne(

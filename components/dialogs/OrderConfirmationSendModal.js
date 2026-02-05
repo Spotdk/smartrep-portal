@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Loader2, MapPin, AlertTriangle } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Loader2, MapPin, AlertTriangle, Percent } from 'lucide-react'
 import { api, BRAND_BLUE } from '@/lib/constants'
 import { taskAddressString } from '@/lib/utils'
 
@@ -21,6 +22,12 @@ const OrderConfirmationSendModal = ({ task, user, open, onClose, onSent }) => {
   const [addChemicalCleaning, setAddChemicalCleaning] = useState(false)
   const [glassNote, setGlassNote] = useState('')
   const [chemicalNote, setChemicalNote] = useState('')
+  const [taskSummary, setTaskSummary] = useState('')
+  const [transportRates, setTransportRates] = useState(null)
+  const [discountKmPercent, setDiscountKmPercent] = useState(0)
+  const [discountTimePercent, setDiscountTimePercent] = useState(0)
+  const [showDiscountKm, setShowDiscountKm] = useState(false)
+  const [showDiscountTime, setShowDiscountTime] = useState(false)
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState(null)
   const [sentConfirmUrl, setSentConfirmUrl] = useState(null)
@@ -33,6 +40,12 @@ const OrderConfirmationSendModal = ({ task, user, open, onClose, onSent }) => {
     setStep(0)
     setSentConfirmUrl(null)
     setSendError(null)
+    setTaskSummary('')
+    setTransportRates(null)
+    setShowDiscountKm(false)
+    setShowDiscountTime(false)
+    setDiscountKmPercent(0)
+    setDiscountTimePercent(0)
     setScreening({ loading: true, error: null, km: null, minutes: null })
     const fetchDistance = async () => {
       try {
@@ -53,6 +66,19 @@ const OrderConfirmationSendModal = ({ task, user, open, onClose, onSent }) => {
     }
     fetchDistance()
   }, [open, task?.id, destination])
+
+  // Hent KØR + TIM2 priser når vi er i step 4 og udvidet zone
+  useEffect(() => {
+    if (!open || step !== 4 || serviceZone !== 'extended') return
+    let cancelled = false
+    setTransportRates(null)
+    api.get('/order-confirmation/transport-rates')
+      .then((r) => {
+        if (!cancelled && r?.kmRate != null && r?.timeRate != null) setTransportRates({ kmRate: r.kmRate, timeRate: r.timeRate })
+      })
+      .catch(() => { if (!cancelled) setTransportRates({ kmRate: 4.75, timeRate: 825 }) })
+    return () => { cancelled = true }
+  }, [open, step, serviceZone])
 
   const driveTimeLabel = screening.minutes != null
     ? screening.minutes >= 60
@@ -88,7 +114,14 @@ const OrderConfirmationSendModal = ({ task, user, open, onClose, onSent }) => {
         glassNote: (taskType === 'mixed' && addGlassRisk) || taskType === 'solo_glass' ? glassNote : '',
         chemicalNote: (taskType === 'mixed' && addChemicalCleaning) || taskType === 'solo_chemical' ? chemicalNote : '',
         distance_km: screening.km ?? null,
-        drive_time_minutes: screening.minutes ?? null
+        drive_time_minutes: screening.minutes ?? null,
+        taskSummary: taskSummary?.trim() || '',
+        ...(serviceZone === 'extended' && transportRates && {
+          transport_km_rate: transportRates.kmRate,
+          transport_time_rate: transportRates.timeRate,
+          transport_km_discount_percent: showDiscountKm ? Math.min(100, Math.max(0, Number(discountKmPercent) || 0)) : 0,
+          transport_time_discount_percent: showDiscountTime ? Math.min(100, Math.max(0, Number(discountTimePercent) || 0)) : 0
+        })
       })
       setSentConfirmUrl(result.confirmUrl || null)
       onSent?.()
@@ -310,6 +343,91 @@ const OrderConfirmationSendModal = ({ task, user, open, onClose, onSent }) => {
         {step === 4 && !sentConfirmUrl && (
           <div className="space-y-4">
             <Label className="text-base font-medium">Forhåndsvisning og afsendelse</Label>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Opgave opsummering (valgfri)</Label>
+              <Textarea
+                className="min-h-[100px] border-2 border-gray-200 rounded-lg bg-white"
+                placeholder="Tilpas evt. opsummeringstekst, som kunden ser i ordrebekræftelsen..."
+                value={taskSummary}
+                onChange={(e) => setTaskSummary(e.target.value)}
+              />
+            </div>
+
+            {serviceZone === 'extended' && screening.km != null && screening.minutes != null && (
+              <div className="border border-amber-200 rounded-lg overflow-hidden bg-amber-50/50">
+                <div className="px-3 py-2 bg-amber-100/80 border-b border-amber-200 text-sm font-semibold text-gray-800">Transporttillæg (udvidet serviceområde)</div>
+                {transportRates ? (() => {
+                  const kmTotal = screening.km * 2
+                  const excessMinPerWay = Math.max(0, screening.minutes - 60)
+                  const excessHoursTotal = (excessMinPerWay * 2) / 60
+                  const dKm = showDiscountKm ? Math.min(100, Math.max(0, Number(discountKmPercent) || 0)) : 0
+                  const dTime = showDiscountTime ? Math.min(100, Math.max(0, Number(discountTimePercent) || 0)) : 0
+                  const kmAmount = Math.round(kmTotal * transportRates.kmRate * (1 - dKm / 100))
+                  const timeAmount = Math.round(excessHoursTotal * transportRates.timeRate * (1 - dTime / 100))
+                  const totalAmount = kmAmount + timeAmount
+                  const destLabel = task?.city ? `Fredericia – ${task.city}` : 'Fredericia – adressen'
+                  return (
+                    <div className="p-3 space-y-3">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-amber-200">
+                            <th className="text-left py-1.5 font-medium text-gray-700">Post</th>
+                            <th className="text-right py-1.5 font-medium text-gray-700 w-20">Beløb</th>
+                          </tr>
+                        </thead>
+                        <tbody className="text-gray-700">
+                          <tr className="border-b border-amber-100">
+                            <td className="py-1.5">
+                              <span>{destLabel} t/r: {kmTotal} km á {Number(transportRates.kmRate).toFixed(2).replace('.', ',')} kr.</span>
+                              {dKm > 0 && <span className="text-amber-700 ml-1">(Rabat {dKm}%)</span>}
+                            </td>
+                            <td className="py-1.5 text-right font-medium">{kmAmount.toLocaleString('da-DK')},-</td>
+                          </tr>
+                          <tr className="border-b border-amber-100">
+                            <td className="py-1.5">
+                              <span>Tid udover 1 time pr. vej: {excessHoursTotal.toFixed(1).replace('.', ',')} timer á {transportRates.timeRate} kr.</span>
+                              {dTime > 0 && <span className="text-amber-700 ml-1">(Rabat {dTime}%)</span>}
+                            </td>
+                            <td className="py-1.5 text-right font-medium">{timeAmount.toLocaleString('da-DK')},-</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                      <div className="flex flex-wrap gap-2 items-center">
+                        <Button type="button" variant="outline" size="sm" onClick={() => setShowDiscountKm(!showDiscountKm)} className="text-xs">
+                          {showDiscountKm ? 'Fjern rabat (km)' : 'Tilføj rabat (km)'}
+                        </Button>
+                        {showDiscountKm && (
+                          <span className="flex items-center gap-1 text-sm">
+                            <Percent className="w-3.5 h-3.5" />
+                            <Input type="number" min={0} max={100} step={1} className="w-16 h-8 text-sm" placeholder="%" value={discountKmPercent || ''} onChange={(e) => setDiscountKmPercent(e.target.value)} />
+                            <span>% ekstraordinær rabat</span>
+                          </span>
+                        )}
+                        <Button type="button" variant="outline" size="sm" onClick={() => setShowDiscountTime(!showDiscountTime)} className="text-xs">
+                          {showDiscountTime ? 'Fjern rabat (køretid)' : 'Tilføj rabat (køretid)'}
+                        </Button>
+                        {showDiscountTime && (
+                          <span className="flex items-center gap-1 text-sm">
+                            <Percent className="w-3.5 h-3.5" />
+                            <Input type="number" min={0} max={100} step={1} className="w-16 h-8 text-sm" placeholder="%" value={discountTimePercent || ''} onChange={(e) => setDiscountTimePercent(e.target.value)} />
+                            <span>% ekstraordinær rabat</span>
+                          </span>
+                        )}
+                      </div>
+                      <div className="bg-blue-50 border-t border-amber-200 px-3 py-2 rounded-b">
+                        <span className="font-semibold text-gray-900">Transporttillæg i alt: {totalAmount.toLocaleString('da-DK')},-</span>
+                        <span className="text-gray-600 ml-1 text-sm">ex. moms</span>
+                      </div>
+                    </div>
+                  )
+                })() : (
+                  <div className="p-3 flex items-center gap-2 text-sm text-gray-500">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Henter priser fra prisliste (KØR, TIM2)...
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="p-3 bg-gray-50 rounded-lg text-sm space-y-1">
               <p><span className="text-gray-500">Kontakt:</span> {recipientName}</p>
               <p><span className="text-gray-500">Email:</span> {recipientEmail || '–'}</p>
@@ -324,6 +442,7 @@ const OrderConfirmationSendModal = ({ task, user, open, onClose, onSent }) => {
               <p className="text-sm text-red-600 bg-red-50 p-2 rounded">{sendError}</p>
             )}
             <DialogFooter>
+              <Button variant="outline" onClick={() => setStep(taskType === 'mixed' ? 3 : 2)}>Tilbage</Button>
               <Button variant="outline" onClick={onClose}>Annuller</Button>
               <Button onClick={handleSend} disabled={sending || !recipientEmail?.trim()} style={{ backgroundColor: BRAND_BLUE }}>
                 {sending ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Sender...</> : 'Send ordrebekræftelse'}

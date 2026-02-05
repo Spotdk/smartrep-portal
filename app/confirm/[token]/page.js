@@ -144,16 +144,17 @@ export default function ConfirmOrderPage() {
             </section>
 
             <section className="mb-8">
-              <h3 className="text-sm font-semibold text-blue-600 uppercase tracking-wide border-b-2 border-blue-100 pb-2 mb-4">Reparationer</h3>
-              <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+              <h3 className="text-sm font-semibold text-blue-600 uppercase tracking-wide border-b-2 border-blue-100 pb-2 mb-4">Reparationer vi har registreret</h3>
+              <div className="bg-gray-50 rounded-lg p-4 space-y-4">
                 {(info.damages || []).length > 0 ? info.damages.map((d, i) => (
-                  <div key={i} className="flex items-start gap-3 py-2 border-b border-gray-200 last:border-0">
-                    <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
-                      <span className="text-white text-sm">✓</span>
-                    </div>
-                    <div className="text-sm text-gray-700">
-                      {[d.part, d.location, d.notes].filter(Boolean).join(' · ') || `Skade ${i + 1}`}
-                    </div>
+                  <div key={i} className="py-3 border-b border-gray-200 last:border-0 last:pb-0">
+                    <p className="text-sm font-medium text-gray-900">
+                      Skade #{i + 1}: {d.part || 'Skade'}{d.quantity != null && d.quantity !== 1 ? `\tAntal: ${d.quantity}` : ''}
+                    </p>
+                    <p className="text-sm text-gray-600 mt-0.5">
+                      {[d.color && d.color !== 'not_specified' && `Farve: ${d.color}`, d.location && `Placering: ${d.location}`].filter(Boolean).join(' • ')}
+                    </p>
+                    {d.notes ? <p className="text-sm text-gray-500 mt-1">{d.notes}</p> : null}
                   </div>
                 )) : (
                   <p className="text-sm text-gray-500">Opgave uden skadeliste</p>
@@ -161,15 +162,71 @@ export default function ConfirmOrderPage() {
               </div>
             </section>
 
+            <section className="mb-8">
+              <h3 className="text-sm font-semibold text-blue-600 uppercase tracking-wide border-b-2 border-blue-100 pb-2 mb-4">Opgave opsummering</h3>
+              <div className="border-2 border-gray-200 rounded-lg p-4 min-h-[80px] bg-gray-50/50">
+                <p className="text-sm text-gray-700 whitespace-pre-wrap">{data?.taskSummary?.trim() || '\u00A0'}</p>
+              </div>
+            </section>
+
             {hasExtended && data?.distance_km != null && (
               <section className="mb-8">
                 <h3 className="text-sm font-semibold text-blue-600 uppercase tracking-wide border-b-2 border-blue-100 pb-2 mb-4">Vedrørende transport</h3>
-                <div className="bg-amber-50 border-l-4 border-amber-500 p-5 rounded-r-lg">
-                  <p className="text-sm text-gray-700 mb-2">Opgaven ligger i vores udvidede serviceområde.</p>
+                <div className="bg-amber-50 border-l-4 border-amber-500 p-5 rounded-r-lg space-y-4">
                   <p className="text-sm text-gray-700">
-                    Afstand: <strong>{data.distance_km} km</strong>, cirka <strong>{Math.floor((data.drive_time_minutes || 0) / 60)} t {data.drive_time_minutes % 60} min</strong> kørsel hver vej.
+                    Opgaven ligger i vores udvidede serviceområde. Afstand fra vores base i Fredericia til {info.city || 'adressen'} er <strong>{data.distance_km} km</strong> og ca. <strong>{Math.floor((data.drive_time_minutes || 0) / 60)} t {(data.drive_time_minutes || 0) % 60} min</strong> kørsel hver vej.
                   </p>
-                  <p className="text-sm text-gray-600 mt-2">Ved længere afstande faktureres et transporttillæg.</p>
+                  <p className="text-sm text-gray-700">
+                    Standardpriser inkluderer op til 1 times kørsel hver vej; længere afstand giver transporttillæg.
+                  </p>
+                  {(() => {
+                    const kmTotal = (data.distance_km || 0) * 2
+                    const kmRate = data.transport_km_rate != null ? Number(data.transport_km_rate) : 3.75
+                    const timeRate = data.transport_time_rate != null ? Number(data.transport_time_rate) : 850
+                    const excessMinutesPerWay = Math.max(0, (data.drive_time_minutes || 0) - 60)
+                    const excessHoursTotal = (excessMinutesPerWay * 2) / 60
+                    const kmAmount = data.transport_km_amount != null ? data.transport_km_amount : Math.round(kmTotal * kmRate * (1 - (data.transport_km_discount_percent || 0) / 100))
+                    const timeAmount = data.transport_time_amount != null ? data.transport_time_amount : Math.round(excessHoursTotal * timeRate * (1 - (data.transport_time_discount_percent || 0) / 100))
+                    const totalAmount = data.transport_total_amount != null ? data.transport_total_amount : kmAmount + timeAmount
+                    const destinationLabel = info.city ? `Fredericia – ${info.city}` : 'Fredericia – adressen'
+                    const discountKm = data.transport_km_discount_percent || 0
+                    const discountTime = data.transport_time_discount_percent || 0
+                    return (
+                      <div className="mt-4 border border-amber-200 rounded-lg overflow-hidden bg-white/60">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-amber-100/80 border-b border-amber-200">
+                              <th className="text-left py-2 px-3 font-semibold text-gray-800">Post</th>
+                              <th className="text-right py-2 px-3 font-semibold text-gray-800 w-24">Beløb</th>
+                            </tr>
+                          </thead>
+                          <tbody className="text-gray-700">
+                            <tr className="border-b border-amber-100">
+                              <td className="py-2 px-3">
+                                {destinationLabel} t/r: {kmTotal} km á {Number(kmRate).toFixed(2).replace('.', ',')} kr.
+                                {discountKm > 0 && <span className="text-amber-700 ml-1">(Ekstraordinær rabat {discountKm}%)</span>}
+                              </td>
+                              <td className="py-2 px-3 text-right font-medium">{kmAmount.toLocaleString('da-DK')},-</td>
+                            </tr>
+                            <tr className="border-b border-amber-100">
+                              <td className="py-2 px-3">
+                                Tid udover 1 time pr. vej: {excessHoursTotal.toFixed(1).replace('.', ',')} timer á {Number(timeRate)} kr.
+                                {discountTime > 0 && <span className="text-amber-700 ml-1">(Ekstraordinær rabat {discountTime}%)</span>}
+                              </td>
+                              <td className="py-2 px-3 text-right font-medium">{timeAmount.toLocaleString('da-DK')},-</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                        <div className="bg-blue-50 border-t border-amber-200 px-3 py-2">
+                          <span className="font-semibold text-gray-900">Transporttillæg i alt: {totalAmount.toLocaleString('da-DK')},-</span>
+                          <span className="text-gray-600 ml-1">ex. moms</span>
+                        </div>
+                        <p className="text-xs text-gray-600 px-3 py-2 border-t border-gray-100">
+                          Bemærk: Selve reparationsarbejdet afregnes efter vores almindelige prisliste.
+                        </p>
+                      </div>
+                    )
+                  })()}
                 </div>
               </section>
             )}
@@ -258,7 +315,7 @@ export default function ConfirmOrderPage() {
             <div className="text-center py-4 px-4 bg-gray-50 rounded-lg border border-gray-200">
               <p className="text-sm text-gray-600">
                 Ved accept accepteres{' '}
-                <a href="https://smartrep.nu/vilkaar" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-medium">
+                <a href="https://www.smartrep.nu/vilkaar" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-medium">
                   SMARTREPs standardvilkår for lakeringsydelser og reklamation
                 </a>
               </p>
