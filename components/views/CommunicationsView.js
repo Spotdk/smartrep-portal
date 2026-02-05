@@ -16,6 +16,7 @@ export default function CommunicationsView() {
   const [smsForm, setSmsForm] = useState({ to: '', message: '' })
   const [emailForm, setEmailForm] = useState({ to: '', subject: '', html: '' })
   const [history, setHistory] = useState([])
+  const [emailStatus, setEmailStatus] = useState(null)
   const templates = [
     { id: '1', name: 'Ordrebekræftelse', type: 'email', subject: 'Ordrebekræftelse - {{Sagsnr}}', body: 'Kære {{Kontakt_navn}},\n\nVi bekræfter hermed modtagelsen af din ordre.\n\nKunde: {{Kunde}}\nSagsnr: {{Sagsnr}}\nAdresse: {{Adresse}}\n\nMed venlig hilsen,\nSMARTREP' },
     { id: '2', name: 'Planlagt besøg', type: 'sms', body: 'Hej {{Bygherre_navn}}, SMARTREP kommer d. {{Dato}} kl. {{Tid}} til {{Adresse}}. Mvh SMARTREP' },
@@ -23,6 +24,7 @@ export default function CommunicationsView() {
   ]
 
   useEffect(() => { api.get('/communications').then(setHistory).catch(console.error) }, [])
+  useEffect(() => { api.get('/email/status').then(setEmailStatus).catch(() => setEmailStatus(null)) }, [])
 
   const sendSMS = async () => {
     setLoading(true)
@@ -61,9 +63,16 @@ export default function CommunicationsView() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Kommunikation</h2>
-        <p className="text-gray-500">Send SMS og email til kunder</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Kommunikation</h2>
+          <p className="text-gray-500">Send SMS og email til kunder</p>
+        </div>
+        {emailStatus && (
+          <div className={`text-xs px-3 py-1.5 rounded ${emailStatus.configured ? 'bg-green-50 text-green-800' : 'bg-amber-50 text-amber-800'}`}>
+            {emailStatus.configured ? `Email: ${emailStatus.fromEmail}` : emailStatus.hint}
+          </div>
+        )}
       </div>
       
       <div className="grid grid-cols-3 gap-6">

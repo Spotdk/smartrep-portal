@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
-import { Loader2, MapPin, AlertTriangle, Percent } from 'lucide-react'
+import { Loader2, MapPin, AlertTriangle, Percent, Clock, Calendar } from 'lucide-react'
 import { api, BRAND_BLUE } from '@/lib/constants'
 import { taskAddressString } from '@/lib/utils'
 
@@ -28,6 +28,8 @@ const OrderConfirmationSendModal = ({ task, user, open, onClose, onSent }) => {
   const [discountTimePercent, setDiscountTimePercent] = useState(0)
   const [showDiscountKm, setShowDiscountKm] = useState(false)
   const [showDiscountTime, setShowDiscountTime] = useState(false)
+  const [deliveryTimeType, setDeliveryTimeType] = useState('2-3_weeks')
+  const [deliveryTimeDate, setDeliveryTimeDate] = useState('')
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState(null)
   const [sentConfirmUrl, setSentConfirmUrl] = useState(null)
@@ -116,6 +118,8 @@ const OrderConfirmationSendModal = ({ task, user, open, onClose, onSent }) => {
         distance_km: screening.km ?? null,
         drive_time_minutes: screening.minutes ?? null,
         taskSummary: taskSummary?.trim() || '',
+        deliveryTimeType,
+        deliveryTimeDate: deliveryTimeType === 'by_date' && deliveryTimeDate ? deliveryTimeDate : null,
         ...(serviceZone === 'extended' && transportRates && {
           transport_km_rate: transportRates.kmRate,
           transport_time_rate: transportRates.timeRate,
@@ -343,6 +347,43 @@ const OrderConfirmationSendModal = ({ task, user, open, onClose, onSent }) => {
         {step === 4 && !sentConfirmUrl && (
           <div className="space-y-4">
             <Label className="text-base font-medium">Forhåndsvisning og afsendelse</Label>
+            <div className="space-y-3">
+              <Label className="text-sm font-medium flex items-center gap-2"><Clock className="w-4 h-4" /> Leveringstid</Label>
+              <div className="space-y-2 pl-1">
+                <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer ${deliveryTimeType === '2-3_weeks' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                  <input type="radio" name="deliveryTime" checked={deliveryTimeType === '2-3_weeks'} onChange={() => setDeliveryTimeType('2-3_weeks')} className="mt-1" />
+                  <div>
+                    <span className="font-medium">Forventet udførsel inden for 2-3 uger</span>
+                    <p className="text-xs text-gray-600 mt-0.5">Vejrforhold kan påvirke planlægning. Vi kontakter dig med konkret dato. (God til vinter)</p>
+                  </div>
+                </label>
+                <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer ${deliveryTimeType === '10_workdays' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                  <input type="radio" name="deliveryTime" checked={deliveryTimeType === '10_workdays'} onChange={() => setDeliveryTimeType('10_workdays')} className="mt-1" />
+                  <div>
+                    <span className="font-medium">Forventet udførsel indenfor 10 arbejdsdage</span>
+                  </div>
+                </label>
+                <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer ${deliveryTimeType === 'by_date' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                  <input type="radio" name="deliveryTime" checked={deliveryTimeType === 'by_date'} onChange={() => setDeliveryTimeType('by_date')} className="mt-1" />
+                  <div className="flex-1">
+                    <span className="font-medium">Efter aftale udført senest</span>
+                    <p className="text-xs text-gray-600 mt-1">Vælg dato i kalenderen</p>
+                    {deliveryTimeType === 'by_date' && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-gray-500" />
+                        <Input
+                          type="date"
+                          value={deliveryTimeDate}
+                          onChange={(e) => setDeliveryTimeDate(e.target.value)}
+                          className="w-40"
+                          min={new Date().toISOString().slice(0, 10)}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </label>
+              </div>
+            </div>
             <div className="space-y-2">
               <Label className="text-sm font-medium">Opgave opsummering (valgfri)</Label>
               <Textarea
@@ -444,7 +485,7 @@ const OrderConfirmationSendModal = ({ task, user, open, onClose, onSent }) => {
             <DialogFooter>
               <Button variant="outline" onClick={() => setStep(taskType === 'mixed' ? 3 : 2)}>Tilbage</Button>
               <Button variant="outline" onClick={onClose}>Annuller</Button>
-              <Button onClick={handleSend} disabled={sending || !recipientEmail?.trim()} style={{ backgroundColor: BRAND_BLUE }}>
+              <Button onClick={handleSend} disabled={sending || !recipientEmail?.trim() || (deliveryTimeType === 'by_date' && !deliveryTimeDate)} style={{ backgroundColor: BRAND_BLUE }}>
                 {sending ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Sender...</> : 'Send ordrebekræftelse'}
               </Button>
             </DialogFooter>

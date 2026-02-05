@@ -18,7 +18,7 @@ import { api, BRAND_BLUE } from '@/lib/constants'
 const CreateTaskDialog = ({ open, onClose, options, companies, user, onCreated }) => {
   const [formData, setFormData] = useState({ 
     companyId: '', companyName: '', contactId: '', contactName: '', contactPhone: '', contactEmail: '',
-    address: '', postalCode: '', city: '', caseNumber: '', isHouseEmpty: false, 
+    address: '', postalCode: '', city: '', latitude: null, longitude: null, caseNumber: '', isHouseEmpty: false, 
     owner1Name: '', owner1Phone: '', owner2Name: '', owner2Phone: '', 
     category: 'service', weatherType: 'sun', estimatedTime: 2, taskSummary: '', notes: '', damages: [], files: [],
     deadline: '', deadlineLocked: false, types: []
@@ -151,20 +151,26 @@ const CreateTaskDialog = ({ open, onClose, options, companies, user, onCreated }
     }
   }
 
-  const selectAddress = (suggestion) => {
-    // Parse DAWA address
-    if (suggestion.adresse) {
-      const addr = suggestion.adresse
+  const selectAddress = async (suggestion) => {
+    const data = suggestion.data || suggestion.adresse
+    if (data) {
+      // DAWA autocomplete returnerer data.x (lon) og data.y (lat) direkte
+      const lon = data.x != null ? Number(data.x) : null
+      const lat = data.y != null ? Number(data.y) : null
       setFormData(prev => ({
         ...prev,
-        address: addr.vejnavn + (addr.husnr ? ' ' + addr.husnr : ''),
-        postalCode: addr.postnr || '',
-        city: addr.postnrnavn || ''
+        address: (data.vejnavn || '') + (data.husnr ? ' ' + data.husnr : ''),
+        postalCode: data.postnr || '',
+        city: data.postnrnavn || '',
+        latitude: lat,
+        longitude: lon
       }))
     } else {
       setFormData(prev => ({
         ...prev,
-        address: suggestion.tekst || suggestion.forspilogtekst || ''
+        address: suggestion.tekst || suggestion.forslagstekst || '',
+        latitude: null,
+        longitude: null
       }))
     }
     setShowSuggestions(false)
@@ -409,7 +415,7 @@ const CreateTaskDialog = ({ open, onClose, options, companies, user, onCreated }
                     className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
                   >
                     <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                    <span>{suggestion.tekst || suggestion.forspilogtekst}</span>
+                    <span>{suggestion.tekst || suggestion.forslagstekst}</span>
                   </button>
                 ))}
               </div>

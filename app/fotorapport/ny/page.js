@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -8,7 +8,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Camera, Trash2, Plus, ArrowLeft, ArrowRight, Check, Loader2, Lock } from 'lucide-react'
+import { Camera, Trash2, Plus, ArrowLeft, ArrowRight, Check, Loader2, Lock, Search, FilePlus, Link2 } from 'lucide-react'
+import { format } from 'date-fns'
+import { da } from 'date-fns/locale'
 
 const BRAND_BLUE = '#0133ff'
 
@@ -30,31 +32,35 @@ const api = {
   post: (endpoint, body) => api.fetch(endpoint, { method: 'POST', body: JSON.stringify(body) }),
 }
 
-// Building parts options
-const BUILDING_PARTS = [
-  { value: 'vindue', label: 'Vindue' },
-  { value: 'doer', label: 'Dør' },
-  { value: 'facade', label: 'Facade' },
-  { value: 'tag', label: 'Tag' },
-  { value: 'gulv', label: 'Gulv' },
-  { value: 'vaeg', label: 'Væg' },
-  { value: 'loft', label: 'Loft' },
-  { value: 'trappe', label: 'Trappe' },
-  { value: 'altan', label: 'Altan' },
-  { value: 'carport', label: 'Carport' },
-  { value: 'garage', label: 'Garage' },
-  { value: 'hegn', label: 'Hegn' },
-  { value: 'terrasse', label: 'Terrasse' },
-  { value: 'andet', label: 'Andet' },
-]
-
 export default function NyFotorapportPage() {
   const router = useRouter()
+  const [authChecked, setAuthChecked] = useState(false)
+  const [user, setUser] = useState(null)
+  const [mode, setMode] = useState(null) // null = vælg | 'fresh' | 'existing'
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [tasks, setTasks] = useState([])
   const [companies, setCompanies] = useState([])
   const [contacts, setContacts] = useState([]) // All contacts from API
+  const [options, setOptions] = useState({ buildingParts: [] })
+  const [taskSearchQuery, setTaskSearchQuery] = useState('')
+  const [addressSuggestions, setAddressSuggestions] = useState([])
+  const [showAddressSuggestions, setShowAddressSuggestions] = useState(false)
+  const [caseNumber, setCaseNumber] = useState('')
+  const addressInputRef = useRef(null)
+  
+  useEffect(() => {
+    api.get('/auth/me')
+      .then((u) => {
+        if (u?.role === 'customer') {
+          router.replace('/')
+          return
+        }
+        setUser(u)
+        setAuthChecked(true)
+      })
+      .catch(() => router.replace('/'))
+  }, [router])
   
   // Step 1: Task selection
   const [selectedTaskId, setSelectedTaskId] = useState('')
@@ -83,21 +89,22 @@ export default function NyFotorapportPage() {
   ])
 
   useEffect(() => {
-    loadData()
-  }, [])
+    if (authChecked) loadData()
+  }, [authChecked])
 
   const loadData = async () => {
     try {
-      const [tasksData, companiesData, usersData] = await Promise.all([
+      const [tasksData, companiesData, usersData, optionsData] = await Promise.all([
         api.get('/tasks'),
         api.get('/companies'),
-        api.get('/users')
+        api.get('/users'),
+        api.get('/options')
       ])
       // Filter to show tasks that are planned or under planning
-      setTasks(tasksData.filter(t => t.status === 'planned' || t.status === 'under_planning'))
+      setTasks(tasksData)
       setCompanies(companiesData || [])
-      // Filter contacts (customers)
       setContacts(usersData.filter(u => u.role === 'customer') || [])
+      setOptions(optionsData || { buildingParts: [] })
     } catch (err) {
       console.error('Load error:', err)
     }
@@ -123,24 +130,58 @@ export default function NyFotorapportPage() {
     const task = tasks.find(t => t.id === taskId)
     if (task) {
       setSelectedTask(task)
-      
-      // Auto-fill address info from task
-      setAddressInfo({
-        address: task.address || '',
-        postalCode: task.postalCode || '',
-        city: task.city || ''
-      })
-      
-      // Auto-fill and LOCK company
+      setAddressInfo({ address: task.address || '', postalCode: task.postalCode || '', city: task.city || '' })
       setSelectedCompanyId(task.companyId || '')
       setSelectedCompanyName(task.companyName || '')
       setIsCompanyLocked(true)
-      
-      // Auto-fill contact fields (but keep them EDITABLE)
       setContactName(task.contactName || task.owner1Name || '')
       setContactEmail(task.contactEmail || '')
       setContactPhone(task.contactPhone || task.owner1Phone || '')
+      setCaseNumber(task.taskNumber || '')
     }
+  }
+
+  // DAWA adresse-autocomplete
+  const searchAddress = async (query) => {
+    if (query.length < 3) { setAddressSuggestions([]); return }
+    try {
+      const res = await fetch(`https://api.dataforsyningen.dk/autocomplete?q=${encodeURIComponent(query)}&type=adresse&fuzzy=true`)
+      const results = await res.json()
+      setAddressSuggestions(results.slice(0, 5))
+      setShowAddressSuggestions(true)
+    } catch (err) { console.error('Address search:', err) }
+  }
+  const selectAddress = (suggestion) => {
+    const data = suggestion.data || suggestion.adresse
+    if (data) {
+      setAddressInfo({
+        address: (data.vejnavn || '') + (data.husnr ? ' ' + data.husnr : ''),
+        postalCode: data.postnr || '',
+        city: data.postnrnavn || ''
+      })
+    } else {
+      setAddressInfo(prev => ({ ...prev, address: suggestion.tekst || suggestion.forslagstekst || '' }))
+    }
+    setShowAddressSuggestions(false)
+    setAddressSuggestions([])
+  }
+
+  const filteredTasks = taskSearchQuery.trim()
+    ? tasks.filter(t => {
+        const q = taskSearchQuery.toLowerCase()
+        const addr = [t.address, t.postalCode, t.city].filter(Boolean).join(' ').toLowerCase()
+        const num = String(t.taskNumber || '').toLowerCase()
+        return addr.includes(q) || num.includes(q)
+      })
+    : tasks
+
+  const handleCompanyChange = (companyId) => {
+    const c = companies.find(x => x.id === companyId)
+    setSelectedCompanyId(companyId)
+    setSelectedCompanyName(c?.name || '')
+    setContactName('')
+    setContactEmail('')
+    setContactPhone('')
   }
 
   // When selecting a contact from dropdown, fill the editable fields
@@ -161,17 +202,34 @@ export default function NyFotorapportPage() {
     }
   }
 
-  // Image upload handler
-  const handleImageUpload = (damageId, field, e) => {
+  // Image upload handler – upload via API i stedet for base64 (undgår for stor request)
+  const [uploadingPhoto, setUploadingPhoto] = useState(null)
+  const handleImageUpload = async (damageId, field, e) => {
     const file = e.target.files?.[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onloadend = () => {
+    if (!file) return
+    setUploadingPhoto({ damageId, field })
+    try {
+      const token = localStorage.getItem('smartrep_token')
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('photoType', 'damage')
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Upload fejlede')
+      const url = data?.file?.url || null
+      if (url) {
         setDamages(prev => prev.map(d => 
-          d.id === damageId ? { ...d, [field]: reader.result } : d
+          d.id === damageId ? { ...d, [field]: url } : d
         ))
       }
-      reader.readAsDataURL(file)
+    } catch (err) {
+      alert('Upload fejl: ' + (err?.message || 'Kunne ikke uploade billede'))
+    } finally {
+      setUploadingPhoto(null)
     }
   }
 
@@ -204,13 +262,17 @@ export default function NyFotorapportPage() {
     }
   }
 
+  const maxStep = mode === 'fresh' ? 2 : 3
   const canProceed = () => {
-    if (step === 1) return selectedTaskId !== ''
-    if (step === 2) return addressInfo.address !== '' && contactName !== '' && (contactEmail !== '' || contactPhone !== '')
-    if (step === 3) {
-      return damages.every(d => 
-        d.buildingPart && d.location && d.closeupPhoto && d.locationPhoto
-      )
+    if (!mode) return false
+    if (mode === 'fresh') {
+      if (step === 1) return selectedCompanyId && contactName && addressInfo.address && (contactEmail || contactPhone)
+      if (step === 2) return damages.every(d => d.buildingPart && d.location && d.closeupPhoto && d.locationPhoto)
+    }
+    if (mode === 'existing') {
+      if (step === 1) return selectedTaskId !== ''
+      if (step === 2) return addressInfo.address && contactName && (contactEmail || contactPhone)
+      if (step === 3) return damages.every(d => d.buildingPart && d.location && d.closeupPhoto && d.locationPhoto)
     }
     return false
   }
@@ -220,8 +282,9 @@ export default function NyFotorapportPage() {
     try {
       // Create report as DRAFT first
       const result = await api.post('/photoreports', {
-        taskId: selectedTaskId,
+        taskId: mode === 'existing' ? selectedTaskId : null,
         companyId: selectedCompanyId,
+        caseNumber: caseNumber || (selectedTask?.taskNumber ?? ''),
         contactName: contactName,
         contactEmail: contactEmail,
         contactPhone: contactPhone,
@@ -230,7 +293,7 @@ export default function NyFotorapportPage() {
         city: addressInfo.city,
         damages: damages.map(d => ({
           id: d.id.toString(),
-          item: BUILDING_PARTS.find(p => p.value === d.buildingPart)?.label || d.buildingPart,
+          item: options?.buildingParts?.find(p => p.value === d.buildingPart)?.label || d.buildingPart,
           type: d.description || d.buildingPart,
           location: d.location,
           notes: d.description,
@@ -262,6 +325,17 @@ export default function NyFotorapportPage() {
     }
   }
 
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-2">
+          <Loader2 className="w-8 h-8 animate-spin" style={{ color: BRAND_BLUE }} />
+          <span className="text-sm text-gray-500">Tjekker adgang...</span>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -271,7 +345,7 @@ export default function NyFotorapportPage() {
             <span className="text-2xl">📷</span>
             <div>
               <h1 className="text-xl font-bold text-gray-900">Opret Ny Fotorapport</h1>
-              <p className="text-sm text-gray-500">Trin {step} af 3</p>
+              <p className="text-sm text-gray-500">{mode ? `Trin ${step} af ${maxStep}` : 'Vælg type'} </p>
             </div>
           </div>
           <Button variant="outline" onClick={() => router.push('/')}>
@@ -281,68 +355,148 @@ export default function NyFotorapportPage() {
       </header>
 
       {/* Progress Bar */}
-      <div className="bg-white border-b">
-        <div className="max-w-3xl mx-auto px-4 py-4">
-          <div className="flex items-center">
-            <div className="flex-1">
-              <div className={`h-2 rounded-full ${step >= 1 ? 'bg-green-500' : 'bg-gray-200'}`} style={step === 1 ? { backgroundColor: BRAND_BLUE } : step > 1 ? { backgroundColor: '#22c55e' } : {}} />
-              <p className={`text-xs mt-1 text-center ${step === 1 ? 'font-semibold' : 'text-gray-500'}`}>
-                Vælg Opgave
-              </p>
-            </div>
-            <div className="flex-1 mx-1">
-              <div className={`h-2 rounded-full ${step >= 2 ? 'bg-green-500' : 'bg-gray-200'}`} style={step === 2 ? { backgroundColor: BRAND_BLUE } : step > 2 ? { backgroundColor: '#22c55e' } : {}} />
-              <p className={`text-xs mt-1 text-center ${step === 2 ? 'font-semibold' : 'text-gray-500'}`}>
-                Kunde & Kontakt
-              </p>
-            </div>
-            <div className="flex-1">
-              <div className={`h-2 rounded-full ${step >= 3 ? 'bg-green-500' : 'bg-gray-200'}`} style={step === 3 ? { backgroundColor: BRAND_BLUE } : {}} />
-              <p className={`text-xs mt-1 text-center ${step === 3 ? 'font-semibold' : 'text-gray-500'}`}>
-                Skader
-              </p>
+      {mode && (
+        <div className="bg-white border-b">
+          <div className="max-w-3xl mx-auto px-4 py-4">
+            <div className="flex items-center">
+              <div className="flex-1">
+                <div className={`h-2 rounded-full ${step >= 1 ? 'bg-green-500' : 'bg-gray-200'}`} style={step === 1 ? { backgroundColor: BRAND_BLUE } : step > 1 ? { backgroundColor: '#22c55e' } : {}} />
+                <p className={`text-xs mt-1 text-center ${step === 1 ? 'font-semibold' : 'text-gray-500'}`}>
+                  {mode === 'fresh' ? 'Kunde & Kontakt' : mode === 'existing' && step === 1 ? 'Vælg Opgave' : 'Kunde & Kontakt'}
+                </p>
+              </div>
+              <div className="flex-1 mx-1">
+                <div className={`h-2 rounded-full ${step >= 2 ? 'bg-green-500' : 'bg-gray-200'}`} style={step === 2 ? { backgroundColor: BRAND_BLUE } : step > 2 ? { backgroundColor: '#22c55e' } : {}} />
+                <p className={`text-xs mt-1 text-center ${step === 2 ? 'font-semibold' : 'text-gray-500'}`}>
+                  {mode === 'fresh' ? 'Skader' : mode === 'existing' ? (step === 2 ? 'Kunde & Kontakt' : 'Skader') : ''}
+                </p>
+              </div>
+              {mode === 'existing' && (
+                <div className="flex-1">
+                  <div className={`h-2 rounded-full ${step >= 3 ? 'bg-green-500' : 'bg-gray-200'}`} style={step === 3 ? { backgroundColor: BRAND_BLUE } : {}} />
+                  <p className={`text-xs mt-1 text-center ${step === 3 ? 'font-semibold' : 'text-gray-500'}`}>Skader</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Content */}
       <main className="max-w-3xl mx-auto p-4">
-        {/* Step 1: Select Task */}
-        {step === 1 && (
+        {/* Mode selection */}
+        {!mode && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card className="cursor-pointer hover:shadow-lg transition-all" onClick={() => { setMode('fresh'); setStep(1); setSelectedTaskId(''); setSelectedTask(null); setIsCompanyLocked(false); setAddressInfo({ address: '', postalCode: '', city: '' }); setContactName(''); setContactEmail(''); setContactPhone(''); setCaseNumber(''); }}>
+              <CardContent className="p-6 flex flex-col items-center text-center">
+                <FilePlus className="w-12 h-12 mb-3" style={{ color: BRAND_BLUE }} />
+                <h3 className="font-semibold text-lg mb-2">Opret ny rapport</h3>
+                <p className="text-sm text-gray-500">Frisk formular – vælg kunde, kontakt og adresse manuelt</p>
+              </CardContent>
+            </Card>
+            <Card className="cursor-pointer hover:shadow-lg transition-all" onClick={() => { setMode('existing'); setStep(1); setSelectedTaskId(''); setSelectedTask(null); setTaskSearchQuery(''); }}>
+              <CardContent className="p-6 flex flex-col items-center text-center">
+                <Link2 className="w-12 h-12 mb-3" style={{ color: BRAND_BLUE }} />
+                <h3 className="font-semibold text-lg mb-2">Til eksisterende opgave</h3>
+                <p className="text-sm text-gray-500">Søg og vælg en eksisterende opgave</p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Step 1 fresh: Kunde, Kontakt, Adresse, Sagsnr., Oprettet dato/af */}
+        {mode === 'fresh' && step === 1 && (
+          <Card>
+            <CardContent className="p-6">
+              <h2 className="text-lg font-semibold mb-4">Kunde & Kontakt</h2>
+              <div className="space-y-6">
+                <div>
+                  <Label>Vælg kunde *</Label>
+                  <Select value={selectedCompanyId} onValueChange={handleCompanyChange}>
+                    <SelectTrigger><SelectValue placeholder="Vælg kunde" /></SelectTrigger>
+                    <SelectContent>{companies.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Vælg kontakt *</Label>
+                  <Select onValueChange={handleContactSelect}>
+                    <SelectTrigger><SelectValue placeholder="Vælg kontakt eller indtast manuelt" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="manual">Indtast manuelt</SelectItem>
+                      {getFilteredContacts().map(contact => (
+                        <SelectItem key={contact.id} value={contact.id}>{contact.name} {contact.companyId === selectedCompanyId ? '(fra kunde)' : ''}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-3">
+                  <Label>Kontakt navn *</Label>
+                  <Input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Navn" />
+                  <Label>Email / Telefon *</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="Email" />
+                    <Input type="tel" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="Telefon" />
+                  </div>
+                </div>
+                <div className="relative">
+                  <Label>Adresse * (DAWA autocomplete eller manuel)</Label>
+                  <Input
+                    ref={addressInputRef}
+                    value={addressInfo.address}
+                    onChange={(e) => { setAddressInfo(prev => ({ ...prev, address: e.target.value })); searchAddress(e.target.value) }}
+                    onFocus={() => addressInfo.address.length >= 3 && setShowAddressSuggestions(true)}
+                    placeholder="Indtast adresse – fx Slotsgade 155"
+                  />
+                  {showAddressSuggestions && addressSuggestions.length > 0 && (
+                    <div className="absolute z-10 mt-1 w-full bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      {addressSuggestions.map((s, i) => (
+                        <button key={i} type="button" className="w-full text-left px-3 py-2 hover:bg-gray-100" onClick={() => selectAddress(s)}>
+                          {s.tekst || s.forslagstekst}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-3 mt-2">
+                    <Input value={addressInfo.postalCode} onChange={(e) => setAddressInfo(prev => ({ ...prev, postalCode: e.target.value }))} placeholder="Postnr." />
+                    <Input value={addressInfo.city} onChange={(e) => setAddressInfo(prev => ({ ...prev, city: e.target.value }))} placeholder="By" />
+                  </div>
+                </div>
+                <div>
+                  <Label>Sagsnr.</Label>
+                  <Input value={caseNumber} onChange={(e) => setCaseNumber(e.target.value)} placeholder="Fx FY-2026-601" />
+                </div>
+                <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-600">
+                  Oprettet: {format(new Date(), 'dd/MM/yyyy HH:mm', { locale: da })} · Af {user?.name || '–'}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Step 1 existing: Search + task list */}
+        {mode === 'existing' && step === 1 && (
           <Card>
             <CardContent className="p-6">
               <h2 className="text-lg font-semibold mb-4">Vælg Opgave</h2>
-              <p className="text-sm text-gray-500 mb-4">
-                Vælg den opgave som fotorapporten skal knyttes til
-              </p>
-              
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Input
+                  value={taskSearchQuery}
+                  onChange={(e) => setTaskSearchQuery(e.target.value)}
+                  placeholder="Søg opgave # eller adresse"
+                  className="pl-10"
+                />
+              </div>
               <div className="space-y-2 max-h-96 overflow-y-auto">
-                {tasks.length === 0 && (
-                  <p className="text-gray-500 text-center py-8">Ingen opgaver tilgængelige</p>
-                )}
-                {tasks.map((task, index) => (
-                  <div
-                    key={task.id}
-                    onClick={() => handleTaskSelect(task.id)}
-                    className={`p-4 border rounded-lg cursor-pointer transition-all ${
-                      selectedTaskId === task.id 
-                        ? 'border-2 bg-blue-50' 
-                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                    }`}
-                    style={selectedTaskId === task.id ? { borderColor: BRAND_BLUE } : {}}
-                  >
+                {filteredTasks.length === 0 && <p className="text-gray-500 text-center py-8">Ingen opgaver fundet</p>}
+                {filteredTasks.map((task) => (
+                  <div key={task.id} onClick={() => handleTaskSelect(task.id)} className={`p-4 border rounded-lg cursor-pointer transition-all ${selectedTaskId === task.id ? 'border-2 bg-blue-50' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`} style={selectedTaskId === task.id ? { borderColor: BRAND_BLUE } : {}}>
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="font-semibold">#{index} - {task.address}</p>
-                        <p className="text-sm text-gray-500">{task.postalCode} {task.city}</p>
-                        <p className="text-sm text-gray-500">{task.companyName}</p>
+                        <p className="font-semibold">#{task.taskNumber} – {task.address}</p>
+                        <p className="text-sm text-gray-500">{task.postalCode} {task.city} · {task.companyName}</p>
                       </div>
-                      {selectedTaskId === task.id && (
-                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-white" style={{ backgroundColor: BRAND_BLUE }}>
-                          <Check className="w-4 h-4" />
-                        </div>
-                      )}
+                      {selectedTaskId === task.id && <div className="w-6 h-6 rounded-full flex items-center justify-center text-white" style={{ backgroundColor: BRAND_BLUE }}><Check className="w-4 h-4" /></div>}
                     </div>
                   </div>
                 ))}
@@ -351,8 +505,8 @@ export default function NyFotorapportPage() {
           </Card>
         )}
 
-        {/* Step 2: Company, Contact & Address */}
-        {step === 2 && (
+        {/* Step 2 existing: Company, Contact & Address */}
+        {mode === 'existing' && step === 2 && (
           <Card>
             <CardContent className="p-6">
               <h2 className="text-lg font-semibold mb-4">Kunde & Kontakt</h2>
@@ -431,16 +585,25 @@ export default function NyFotorapportPage() {
                   </p>
                 </div>
 
-                {/* Address Fields */}
+                {/* Address Fields - DAWA autocomplete */}
                 <div className="pt-4 border-t">
-                  <Label className="font-semibold">Adresse (fra opgave)</Label>
-                  <div className="space-y-3 mt-2">
+                  <Label className="font-semibold">Adresse</Label>
+                  <div className="space-y-3 mt-2 relative">
                     <div>
-                      <Label className="text-sm">Adresse</Label>
+                      <Label className="text-sm">Adresse (DAWA autocomplete eller manuel)</Label>
                       <Input 
                         value={addressInfo.address}
-                        onChange={(e) => setAddressInfo(prev => ({ ...prev, address: e.target.value }))}
+                        onChange={(e) => { setAddressInfo(prev => ({ ...prev, address: e.target.value })); if (e.target.value.length >= 3) searchAddress(e.target.value); else setShowAddressSuggestions(false); }}
+                        onFocus={() => addressInfo.address.length >= 3 && setShowAddressSuggestions(true)}
+                        placeholder="Indtast adresse"
                       />
+                      {showAddressSuggestions && addressSuggestions.length > 0 && (
+                        <div className="absolute z-10 mt-1 w-full bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                          {addressSuggestions.map((s, i) => (
+                            <button key={i} type="button" className="w-full text-left px-3 py-2 hover:bg-gray-100" onClick={() => selectAddress(s)}>{s.tekst || s.forslagstekst}</button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
@@ -460,13 +623,20 @@ export default function NyFotorapportPage() {
                     </div>
                   </div>
                 </div>
+                <div className="pt-4">
+                  <Label className="text-sm">Sagsnr.</Label>
+                  <Input value={caseNumber || selectedTask?.taskNumber || ''} onChange={(e) => setCaseNumber(e.target.value)} placeholder="Fx FY-2026-601" />
+                </div>
+                <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-600">
+                  Oprettet: {format(new Date(), 'dd/MM/yyyy HH:mm', { locale: da })} · Af {user?.name || '–'}
+                </div>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Step 3: Damages */}
-        {step === 3 && (
+        {/* Step 2 fresh / Step 3 existing: Damages */}
+        {(mode === 'fresh' && step === 2) || (mode === 'existing' && step === 3) ? (
           <Card>
             <CardContent className="p-6">
               <h2 className="text-lg font-semibold mb-4">Skader</h2>
@@ -504,7 +674,7 @@ export default function NyFotorapportPage() {
                             <SelectValue placeholder="Vælg bygningsdel" />
                           </SelectTrigger>
                           <SelectContent>
-                            {BUILDING_PARTS.map(part => (
+                            {(options?.buildingParts || []).map(part => (
                               <SelectItem key={part.value} value={part.value}>
                                 {part.label}
                               </SelectItem>
@@ -557,15 +727,20 @@ export default function NyFotorapportPage() {
                                 </Button>
                               </div>
                             ) : (
-                              <label className="flex flex-col items-center justify-center h-40 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-400 hover:bg-gray-50 transition-colors">
-                                <Camera className="w-8 h-8 text-gray-400 mb-2" />
-                                <span className="text-sm text-gray-500">Klik for at vælge</span>
+                              <label className="flex flex-col items-center justify-center h-40 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-400 hover:bg-gray-50 transition-colors disabled:opacity-60">
+                                {uploadingPhoto?.damageId === damage.id && uploadingPhoto?.field === 'closeupPhoto' ? (
+                                  <Loader2 className="w-8 h-8 text-gray-400 mb-2 animate-spin" />
+                                ) : (
+                                  <Camera className="w-8 h-8 text-gray-400 mb-2" />
+                                )}
+                                <span className="text-sm text-gray-500">{uploadingPhoto?.damageId === damage.id && uploadingPhoto?.field === 'closeupPhoto' ? 'Uploader...' : 'Klik for at vælge'}</span>
                                 <input
                                   type="file"
                                   accept="image/*"
                                   capture="environment"
                                   className="hidden"
                                   onChange={(e) => handleImageUpload(damage.id, 'closeupPhoto', e)}
+                                  disabled={!!uploadingPhoto}
                                 />
                               </label>
                             )}
@@ -593,15 +768,20 @@ export default function NyFotorapportPage() {
                                 </Button>
                               </div>
                             ) : (
-                              <label className="flex flex-col items-center justify-center h-40 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-400 hover:bg-gray-50 transition-colors">
-                                <Camera className="w-8 h-8 text-gray-400 mb-2" />
-                                <span className="text-sm text-gray-500">Klik for at vælge</span>
+                              <label className="flex flex-col items-center justify-center h-40 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-400 hover:bg-gray-50 transition-colors disabled:opacity-60">
+                                {uploadingPhoto?.damageId === damage.id && uploadingPhoto?.field === 'locationPhoto' ? (
+                                  <Loader2 className="w-8 h-8 text-gray-400 mb-2 animate-spin" />
+                                ) : (
+                                  <Camera className="w-8 h-8 text-gray-400 mb-2" />
+                                )}
+                                <span className="text-sm text-gray-500">{uploadingPhoto?.damageId === damage.id && uploadingPhoto?.field === 'locationPhoto' ? 'Uploader...' : 'Klik for at vælge'}</span>
                                 <input
                                   type="file"
                                   accept="image/*"
                                   capture="environment"
                                   className="hidden"
                                   onChange={(e) => handleImageUpload(damage.id, 'locationPhoto', e)}
+                                  disabled={!!uploadingPhoto}
                                 />
                               </label>
                             )}
@@ -624,20 +804,20 @@ export default function NyFotorapportPage() {
               </div>
             </CardContent>
           </Card>
-        )}
+        ) : null}
 
         {/* Navigation Buttons */}
+        {mode && (
         <div className="flex justify-between mt-6">
           <Button
             variant="outline"
-            onClick={() => setStep(s => s - 1)}
-            disabled={step === 1}
+            onClick={() => step === 1 ? setMode(null) : setStep(s => s - 1)}
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Tilbage
           </Button>
 
-          {step < 3 ? (
+          {step < maxStep ? (
             <Button
               onClick={() => setStep(s => s + 1)}
               disabled={!canProceed()}
@@ -662,6 +842,7 @@ export default function NyFotorapportPage() {
             </Button>
           )}
         </div>
+        )}
       </main>
     </div>
   )

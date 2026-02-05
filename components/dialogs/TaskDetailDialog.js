@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -51,6 +51,24 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
   const [resendResult, setResendResult] = useState(null)
   const [testDeliveryLoading, setTestDeliveryLoading] = useState(false)
   const [showWeatherReportModal, setShowWeatherReportModal] = useState(false)
+  const [geocodeLoading, setGeocodeLoading] = useState(false)
+  const autoGeocodeAttemptedRef = useRef(null)
+
+  // Opgave har adresse men mangler koordinater (vejr kræver lat/long)
+  const hasAddressButNoCoords = task && (task.address || task.postalCode || task.city) && (!task.latitude || !task.longitude)
+
+  // Auto-geokod når opgave åbnes med adresse men uden koordinater (uden manuel handling)
+  useEffect(() => {
+    if (!open) { autoGeocodeAttemptedRef.current = null; return }
+    if (!task?.id || !hasAddressButNoCoords || geocodeLoading) return
+    if (autoGeocodeAttemptedRef.current === task.id) return
+    autoGeocodeAttemptedRef.current = task.id
+    setGeocodeLoading(true)
+    api.post(`/tasks/${task.id}/geocode`, {})
+      .then(() => { onUpdate?.() })
+      .catch(() => { /* Beholder attempted så vi ikke retry-loop; bruger kan klikke Prøv igen */ })
+      .finally(() => setGeocodeLoading(false))
+  }, [open, task?.id, hasAddressButNoCoords, geocodeLoading, onUpdate])
 
   // Initialize edit data when task changes or editing starts
   useEffect(() => {
@@ -240,6 +258,23 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
     }
   }
 
+  // Geokod adresse (hent koordinater fra DAWA)
+  const handleGeocode = async () => {
+    if (!task?.id || geocodeLoading) return
+    setGeocodeLoading(true)
+    try {
+      await api.post(`/tasks/${task.id}/geocode`, {})
+      setStatusPopup('Adresse geokodet')
+      setTimeout(() => setStatusPopup(null), 3000)
+      onUpdate()
+    } catch (err) {
+      console.error(err)
+      alert(err?.message || 'Geokodning fejlede')
+    } finally {
+      setGeocodeLoading(false)
+    }
+  }
+
   // Change contact on task
   const handleChangeContact = async (contactId) => {
     setUpdating(true)
@@ -367,6 +402,19 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
                 <>
                   <p className="font-semibold text-gray-900">{taskAddressString(task) || '—'}</p>
                   <p className="text-sm text-gray-500">{task.postalCode} {task.city}</p>
+                  {hasAddressButNoCoords && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-2 gap-1"
+                      onClick={handleGeocode}
+                      disabled={geocodeLoading}
+                    >
+                      {geocodeLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MapPin className="w-3.5 h-3.5" />}
+                      Geokod adresse
+                    </Button>
+                  )}
                 </>
               )}
             </div>
@@ -481,7 +529,7 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
             {/* Vejrstatus-widget (DMI-baseret) */}
             {!isEditing && task && (
               <div className="col-span-full">
-                <WeatherStatusWidget task={task} />
+                <WeatherStatusWidget task={task} onGeocode={hasAddressButNoCoords ? handleGeocode : undefined} geocodeLoading={geocodeLoading} />
               </div>
             )}
             

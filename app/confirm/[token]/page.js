@@ -311,8 +311,22 @@ export default function ConfirmOrderPage() {
                   <Clock className="w-6 h-6 text-blue-600" />
                 </div>
                 <div>
-                  <h4 className="font-semibold text-gray-900">Forventet udførsel inden for 2-3 uger</h4>
-                  <p className="text-sm text-gray-600 mt-1">Vejrforhold kan påvirke planlægning. Vi kontakter dig med konkret dato.</p>
+                  {data?.deliveryTimeType === '10_workdays' && (
+                    <>
+                      <h4 className="font-semibold text-gray-900">Forventet udførsel indenfor 10 arbejdsdage</h4>
+                    </>
+                  )}
+                  {data?.deliveryTimeType === 'by_date' && data?.deliveryTimeDate && (
+                    <>
+                      <h4 className="font-semibold text-gray-900">Efter aftale sørger vi for at opgaven er udført senest {new Date(data.deliveryTimeDate + 'T12:00:00').toLocaleDateString('da-DK', { day: 'numeric', month: 'long', year: 'numeric' })}</h4>
+                    </>
+                  )}
+                  {(!data?.deliveryTimeType || data?.deliveryTimeType === '2-3_weeks') && (
+                    <>
+                      <h4 className="font-semibold text-gray-900">Forventet udførsel inden for 2-3 uger</h4>
+                      <p className="text-sm text-gray-600 mt-1">Vejrforhold kan påvirke planlægning. Vi kontakter dig med konkret dato.</p>
+                    </>
+                  )}
                 </div>
               </div>
             </section>

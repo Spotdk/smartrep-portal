@@ -19,7 +19,7 @@ export default function Sidebar({ user, activeView, setActiveView, collapsed, se
     { id: 'map', label: 'Kort', icon: Map, roles: ['admin'] },
     { id: 'weather', label: 'Vejr', icon: Cloud, roles: ['admin'] },
     { id: 'communications', label: 'Kommunikation', icon: MessageSquare, roles: ['admin'] },
-    { id: 'photoreports', label: 'Fotorapporter', icon: FileImage, roles: ['admin', 'customer', 'technician'] },
+    { id: 'photoreports', label: 'Fotorapporter', icon: FileImage, roles: ['admin', 'technician'] },
     // Økonomi sektion
     { id: 'divider-economy', type: 'divider', label: 'ØKONOMI', roles: ['admin'] },
     { id: 'pricelist', label: 'Prisliste', icon: List, roles: ['admin'] },

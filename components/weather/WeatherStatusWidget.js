@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ChevronDown, ChevronUp, CloudRain, Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, CloudRain, Loader2, MapPin } from 'lucide-react'
 import { api } from '@/lib/constants'
 import { format } from 'date-fns'
 import { da } from 'date-fns/locale'
@@ -19,7 +19,7 @@ function isWorkday(date) {
   return d.getDay() >= 1 && d.getDay() <= 5
 }
 
-export default function WeatherStatusWidget({ task }) {
+export default function WeatherStatusWidget({ task, onGeocode, geocodeLoading }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -63,7 +63,18 @@ export default function WeatherStatusWidget({ task }) {
           <CloudRain className="w-4 h-4" />
           Vejrstatus · {addressStr}
         </span>
-        <p className="mt-2 text-xs">Tilføj adresse med koordinater for at se vejrstatus (geokod opgaven).</p>
+        <p className="mt-2 text-xs">Tilføj adresse med koordinater for at se vejrstatus.</p>
+        {onGeocode && (task?.address || task?.postalCode || task?.city) && (
+          <button
+            type="button"
+            onClick={onGeocode}
+            disabled={geocodeLoading}
+            className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 transition disabled:opacity-60"
+          >
+            {geocodeLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MapPin className="w-3.5 h-3.5" />}
+            {geocodeLoading ? 'Geokoder...' : 'Geokod adresse nu'}
+          </button>
+        )}
       </div>
     )
   }

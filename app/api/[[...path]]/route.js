@@ -87,7 +87,8 @@ function isWorkday(date) {
   return day >= 1 && day <= 5
 }
 
-const DMI_CLIMATE_BASE = 'https://dmigw.govcloud.dk/v2/climateData/collections/10kmGridValue/items'
+// DMI Open Data API (anbefalet fra 2025; gamle dmigw.govcloud.dk udfases ca. 30. juni 2026)
+const DMI_CLIMATE_BASE = 'https://opendataapi.dmi.dk/v2/climateData/collections/10kmGridValue/items'
 const WEATHER_ICONS = ['☀️', '🌤', '☁️', '🌥', '🌧', '🌦', '❄️', '💨']
 
 function iconFromData(temp, precip, wind) {
@@ -108,10 +109,9 @@ function descFromData(temp, precip, wind) {
   return 'Tørt'
 }
 
-/** Hent daglige vejrdata fra DMI Climate Data (10km grid). Returnerer array af { date, temp_avg, ... } eller tom array ved fejl. */
+/** Hent daglige vejrdata fra DMI Open Data API (10km grid). Returnerer array af { date, temp_avg, ... } eller tom array ved fejl. */
 async function fetchDmiDailyWeather(lat, lon, startDate, endDate) {
   const apiKey = process.env.DMI_API_KEY
-  if (!apiKey) return []
   const lon1 = (lon - 0.06).toFixed(4)
   const lat1 = (lat - 0.06).toFixed(4)
   const lon2 = (lon + 0.06).toFixed(4)
@@ -120,6 +120,7 @@ async function fetchDmiDailyWeather(lat, lon, startDate, endDate) {
   const datetime = `${startDate}T00:00:00+01:00/${endDate}T23:59:59+01:00`
   const params = { bbox, datetime, timeResolution: 'day', limit: 500 }
   const paramsStr = new URLSearchParams(params).toString()
+  const keySuffix = apiKey ? `&api-key=${apiKey}` : ''
 
   const parameters = [
     'mean_temp',
@@ -134,7 +135,7 @@ async function fetchDmiDailyWeather(lat, lon, startDate, endDate) {
   try {
     const results = await Promise.all(
       parameters.map(async (parameterId) => {
-        const url = `${DMI_CLIMATE_BASE}?${paramsStr}&parameterId=${parameterId}&api-key=${apiKey}`
+        const url = `${DMI_CLIMATE_BASE}?${paramsStr}&parameterId=${parameterId}${keySuffix}`
         const res = await fetch(url, { headers: { Accept: 'application/geo+json' } })
         if (!res.ok) return []
         const data = await res.json()
@@ -192,6 +193,102 @@ async function fetchDmiDailyWeather(lat, lon, startDate, endDate) {
     console.error('DMI Climate Data fetch error:', err)
     return []
   }
+}
+
+// Forecast EDR API – prognoser for kommende dage (~54 t frem). Cache 3 timer (DMI opdaterer ca. hver 6. time).
+const DMI_FORECAST_EDR_BASE = 'https://opendataapi.dmi.dk/v1/forecastedr/collections/harmonie_dini_sf/position'
+const FORECAST_CACHE_TTL_MS = 3 * 60 * 60 * 1000
+const forecastCache = new Map()
+
+function forecastCacheKey(lat, lon) {
+  return `${Number(lat).toFixed(2)}:${Number(lon).toFixed(2)}`
+}
+
+/** Hent prognosedata fra Forecast EDR API (time-for-time). Returnerer features-array eller []. */
+async function fetchForecastEdr(lat, lon) {
+  const key = forecastCacheKey(lat, lon)
+  const cached = forecastCache.get(key)
+  if (cached && cached.expires > Date.now()) return cached.features || []
+  const coords = `POINT(${Number(lon)} ${Number(lat)})`
+  const params = new URLSearchParams({
+    coords,
+    'parameter-name': 'temperature-2m,wind-speed-10m,wind-dir-10m,precipitation,relative-humidity',
+    crs: 'crs84',
+    f: 'GeoJSON'
+  })
+  const url = `${DMI_FORECAST_EDR_BASE}?${params.toString()}`
+  try {
+    const res = await fetch(url, { headers: { Accept: 'application/geo+json' } })
+    if (!res.ok) return []
+    const data = await res.json()
+    const features = data.features || []
+    forecastCache.set(key, { features, expires: Date.now() + FORECAST_CACHE_TTL_MS })
+    return features
+  } catch (err) {
+    console.error('DMI Forecast EDR fetch error:', err)
+    return []
+  }
+}
+
+/** Aggregér EDR time-data til daglige værdier (samme format som Climate Data-dage). */
+function aggregateForecastToDaily(features) {
+  const byDate = {}
+  for (const f of features) {
+    const step = f.properties?.step
+    if (!step || typeof step !== 'string') continue
+    const dateStr = step.slice(0, 10)
+    if (!byDate[dateStr]) byDate[dateStr] = { temps: [], winds: [], precips: [], hums: [] }
+    const p = f.properties
+    const tempK = p['temperature-2m']
+    if (tempK != null) byDate[dateStr].temps.push(Number(tempK) - 273.15)
+    const w = p['wind-speed-10m']
+    if (w != null) byDate[dateStr].winds.push(Number(w))
+    const prec = p.precipitation
+    if (prec != null) byDate[dateStr].precips.push(Number(prec))
+    const rh = p['relative-humidity'] ?? p['relative_humidity']
+    if (rh != null) byDate[dateStr].hums.push(Number(rh))
+  }
+  const dayNames = ['Søndag', 'Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lørdag']
+  const days = []
+  for (const date of Object.keys(byDate).sort()) {
+    const d = byDate[date]
+    const temps = d.temps.filter((t) => !Number.isNaN(t))
+    const winds = d.winds.filter((w) => !Number.isNaN(w))
+    const precips = d.precips.filter((p) => !Number.isNaN(p))
+    const hums = d.hums.filter((h) => !Number.isNaN(h))
+    const temp_avg = temps.length ? temps.reduce((a, b) => a + b, 0) / temps.length : null
+    const temp_min = temps.length ? Math.min(...temps) : null
+    const temp_max = temps.length ? Math.max(...temps) : null
+    const wind_avg = winds.length ? winds.reduce((a, b) => a + b, 0) / winds.length : null
+    const wind_max = winds.length ? Math.max(...winds) : null
+    const precipitation_mm = precips.length ? precips.reduce((a, b) => a + b, 0) : 0
+    const humidity_avg = hums.length ? Math.round(hums.reduce((a, b) => a + b, 0) / hums.length) : null
+    const classified = classifyDayForApi({
+      temp_avg: temp_avg ?? 10,
+      wind_max: wind_max ?? 0,
+      precipitation_mm,
+      humidity_avg: humidity_avg ?? 70
+    })
+    const tempVal = temp_avg ?? 10
+    days.push({
+      date,
+      day_name: dayNames[new Date(date + 'T12:00:00').getDay()],
+      temp_avg: temp_avg != null ? Math.round(temp_avg * 10) / 10 : null,
+      temp_min: temp_min != null ? Math.round(temp_min * 10) / 10 : null,
+      temp_max: temp_max != null ? Math.round(temp_max * 10) / 10 : null,
+      wind_avg: wind_avg != null ? Math.round(wind_avg * 10) / 10 : null,
+      wind_max: wind_max != null ? Math.round(wind_max * 10) / 10 : null,
+      wind_gust: wind_max != null ? Math.round((wind_max * 1.2) * 10) / 10 : null,
+      precipitation_mm: Math.round(precipitation_mm * 10) / 10,
+      humidity_avg: humidity_avg ?? null,
+      weather_icon: iconFromData(tempVal, precipitation_mm, wind_max),
+      weather_desc: descFromData(tempVal, precipitation_mm, wind_max),
+      status: classified.status,
+      status_reason: classified.reason,
+      data_source: 'forecast'
+    })
+  }
+  return days
 }
 
 /** Ved manglende DMI-data: returner en dag med status UNKNOWN (ingen opdigtede tal). */
@@ -747,48 +844,36 @@ async function handleRoute(request, { params }) {
         { $set: { password: hashedPassword, passwordResetAt: new Date() } }
       )
 
-      // Send email with new password via SendGrid
-      if (process.env.SENDGRID_API_KEY) {
-        const emailHtml = `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <div style="background: #0133ff; color: white; padding: 20px; text-align: center;">
-              <h1 style="margin: 0;">SMARTREP</h1>
-            </div>
-            <div style="padding: 30px; background: #f9fafb;">
-              <h2 style="color: #111827;">Hej ${user.name},</h2>
-              <p style="color: #374151; font-size: 16px; line-height: 1.6;">
-                Dit password til SMARTREP kundeportalen er blevet nulstillet.
-              </p>
-              <div style="background: white; border: 2px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 20px 0;">
-                <p style="margin: 0 0 10px 0; color: #6b7280;">Dit nye password:</p>
-                <p style="margin: 0; font-size: 24px; font-family: monospace; color: #111827; font-weight: bold;">${newPassword}</p>
-              </div>
-              <p style="color: #374151; font-size: 16px; line-height: 1.6;">
-                Log ind på: <a href="${process.env.NEXT_PUBLIC_BASE_URL}" style="color: #0133ff;">${process.env.NEXT_PUBLIC_BASE_URL}</a>
-              </p>
-              <p style="color: #ef4444; font-size: 14px;">
-                Vi anbefaler at du ændrer dit password efter første login.
-              </p>
-            </div>
-            <div style="background: #f3f4f6; padding: 20px; text-align: center; color: #6b7280; font-size: 12px;">
-              <p>Denne email er sendt automatisk fra SMARTREP kundeportal.</p>
-            </div>
+      // Send email with new password via SendGrid (bruger sendEmailWithTemplate for konsistens)
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: #0133ff; color: white; padding: 20px; text-align: center;">
+            <h1 style="margin: 0;">SMARTREP</h1>
           </div>
-        `
-
-        await fetch('https://api.sendgrid.com/v3/mail/send', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${process.env.SENDGRID_API_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            personalizations: [{ to: [{ email: user.email, name: user.name }] }],
-            from: { email: process.env.SENDGRID_FROM_EMAIL || 'noreply@smartrep.dk', name: 'SMARTREP' },
-            subject: 'SMARTREP: Dit nye password',
-            content: [{ type: 'text/html', value: emailHtml }]
-          })
-        })
+          <div style="padding: 30px; background: #f9fafb;">
+            <h2 style="color: #111827;">Hej ${user.name},</h2>
+            <p style="color: #374151; font-size: 16px; line-height: 1.6;">
+              Dit password til SMARTREP kundeportalen er blevet nulstillet.
+            </p>
+            <div style="background: white; border: 2px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 20px 0;">
+              <p style="margin: 0 0 10px 0; color: #6b7280;">Dit nye password:</p>
+              <p style="margin: 0; font-size: 24px; font-family: monospace; color: #111827; font-weight: bold;">${newPassword}</p>
+            </div>
+            <p style="color: #374151; font-size: 16px; line-height: 1.6;">
+              Log ind på: <a href="${process.env.NEXT_PUBLIC_BASE_URL}" style="color: #0133ff;">${process.env.NEXT_PUBLIC_BASE_URL}</a>
+            </p>
+            <p style="color: #ef4444; font-size: 14px;">
+              Vi anbefaler at du ændrer dit password efter første login.
+            </p>
+          </div>
+          <div style="background: #f3f4f6; padding: 20px; text-align: center; color: #6b7280; font-size: 12px;">
+            <p>Denne email er sendt automatisk fra SMARTREP kundeportal.</p>
+          </div>
+        </div>
+      `
+      const emailResult = await sendEmailWithTemplate(user.email, 'SMARTREP: Dit nye password', emailHtml)
+      if (!emailResult.success) {
+        console.error('Password reset email failed:', emailResult.error)
       }
 
       // Log communication
@@ -799,7 +884,7 @@ async function handleRoute(request, { params }) {
         to: user.email,
         toName: user.name,
         subject: 'Dit nye password',
-        status: 'sent',
+        status: emailResult.success ? 'sent' : 'failed',
         sentAt: new Date(),
         sentBy: adminUser.id,
         createdAt: new Date()
@@ -1440,6 +1525,49 @@ async function handleRoute(request, { params }) {
       return handleCORS(NextResponse.json(rest))
     }
 
+    // Geokod opgave (hent koordinater fra adresse) – POST /api/tasks/:id/geocode
+    if (route.match(/^\/tasks\/[^/]+\/geocode$/) && method === 'POST') {
+      const user = getUserFromToken(request)
+      if (!user) return handleCORS(NextResponse.json({ error: 'Ikke autoriseret' }, { status: 401 }))
+      const taskId = path[1]
+      const task = await db.collection('tasks').findOne({ id: taskId })
+      if (!task) return handleCORS(NextResponse.json({ error: 'Opgave ikke fundet' }, { status: 404 }))
+      const q = [task.address, task.postalCode, task.city].filter(Boolean).join(', ')
+      if (!q || q.length < 3) return handleCORS(NextResponse.json({ error: 'Manglende adresse' }, { status: 400 }))
+      try {
+        const acRes = await fetch(`https://api.dataforsyningen.dk/autocomplete?q=${encodeURIComponent(q)}&type=adresse&fuzzy=true`)
+        if (!acRes.ok) return handleCORS(NextResponse.json({ error: 'Geokodning fejlede' }, { status: 502 }))
+        const suggestions = await acRes.json()
+        const first = suggestions?.[0]?.data || suggestions?.[0]?.adresse
+        if (!first) return handleCORS(NextResponse.json({ error: 'Adressen kunne ikke findes' }, { status: 404 }))
+        let longitude, latitude
+        if (first.x != null && first.y != null) {
+          longitude = Number(first.x)
+          latitude = Number(first.y)
+        } else if (first.id) {
+          const addrRes = await fetch(`https://api.dataforsyningen.dk/adresser/${first.id}`)
+          if (!addrRes.ok) return handleCORS(NextResponse.json({ error: 'Kunne ikke hente koordinater' }, { status: 502 }))
+          const full = await addrRes.json()
+          const koord = full?.adgangsadresse?.adgangspunkt?.koordinater
+          if (!Array.isArray(koord) || koord.length < 2) return handleCORS(NextResponse.json({ error: 'Ingen koordinater for adressen' }, { status: 404 }))
+          longitude = Number(koord[0])
+          latitude = Number(koord[1])
+        } else {
+          return handleCORS(NextResponse.json({ error: 'Ingen koordinater for adressen' }, { status: 404 }))
+        }
+        await db.collection('tasks').updateOne(
+          { id: taskId },
+          { $set: { latitude, longitude, updatedAt: new Date() } }
+        )
+        const updated = await db.collection('tasks').findOne({ id: taskId })
+        const { _id, ...rest } = updated
+        return handleCORS(NextResponse.json(rest))
+      } catch (err) {
+        console.error('Geocode error:', err)
+        return handleCORS(NextResponse.json({ error: 'Geokodning fejlede' }, { status: 500 }))
+      }
+    }
+
     // Update task status - PATCH /api/tasks/:id/status
     if (route.match(/^\/tasks\/[^/]+\/status$/) && method === 'PATCH') {
       const user = getUserFromToken(request)
@@ -1574,10 +1702,13 @@ async function handleRoute(request, { params }) {
 
       const body = await request.json()
       
-      // Get task info
-      const task = await db.collection('tasks').findOne({ id: body.taskId })
-      if (!task) {
+      // Task valgfri – ved frisk rapport uden opgave er taskId null
+      const task = body.taskId ? await db.collection('tasks').findOne({ id: body.taskId }) : null
+      if (body.taskId && !task) {
         return handleCORS(NextResponse.json({ error: 'Opgave ikke fundet' }, { status: 404 }))
+      }
+      if (!body.taskId && (!body.companyId || !body.contactName || !body.address)) {
+        return handleCORS(NextResponse.json({ error: 'Ved ny rapport uden opgave: kunde, kontakt og adresse er påkrævet' }, { status: 400 }))
       }
       
       // Generate unique review token (bruges når rapporten sendes)
@@ -1585,16 +1716,17 @@ async function handleRoute(request, { params }) {
       
       const report = {
         id: uuidv4(),
-        taskId: body.taskId,
-        companyId: body.companyId || task.companyId,
+        taskId: body.taskId || null,
+        caseNumber: body.caseNumber || (task ? task.taskNumber : null),
+        companyId: body.companyId || task?.companyId || null,
         // Contact info
-        contactName: body.contactName || task.contactName || task.owner1Name || '',
-        contactEmail: body.contactEmail || task.contactEmail || '',
-        contactPhone: body.contactPhone || task.contactPhone || task.owner1Phone || '',
+        contactName: body.contactName || task?.contactName || task?.owner1Name || '',
+        contactEmail: body.contactEmail || task?.contactEmail || '',
+        contactPhone: body.contactPhone || task?.contactPhone || task?.owner1Phone || '',
         // Address
-        address: body.address || task.address || '',
-        postalCode: body.postalCode || task.postalCode || '',
-        city: body.city || task.city || '',
+        address: body.address || task?.address || '',
+        postalCode: body.postalCode || task?.postalCode || '',
+        city: body.city || task?.city || '',
         // Damages
         damages: (body.damages || []).map(d => ({
           id: d.id || uuidv4(),
@@ -2148,11 +2280,10 @@ async function handleRoute(request, { params }) {
       const postalCode = url.searchParams.get('postal') || '7000'
 
       try {
-        // DMI API call
-        const dmiResponse = await fetch(
-          `https://dmigw.govcloud.dk/v2/metObs/collections/observation/items?datetime=latest&api-key=${process.env.DMI_API_KEY}`,
-          { headers: { 'X-Gravitee-Api-Key': process.env.DMI_API_KEY } }
-        )
+        // DMI Open Data API (opendataapi.dmi.dk – API-nøgle ikke længere påkrævet)
+        const dmiKey = process.env.DMI_API_KEY
+        const dmiUrl = `https://opendataapi.dmi.dk/v2/metObs/collections/observation/items?datetime=latest${dmiKey ? `&api-key=${dmiKey}` : ''}`
+        const dmiResponse = await fetch(dmiUrl, dmiKey ? { headers: { 'X-Gravitee-Api-Key': dmiKey } } : {})
         
         if (dmiResponse.ok) {
           const weatherData = await dmiResponse.json()
@@ -2187,7 +2318,7 @@ async function handleRoute(request, { params }) {
     }
 
     // ============ VEJRANALYSE ============
-    // GET /api/weather/analysis?lat=&lon=&start=&end=&workdaysOnly= (bruger DMI Climate Data 10km grid)
+    // GET /api/weather/analysis?lat=&lon=&start=&end=&workdaysOnly= (Climate Data historik + Forecast EDR prognose)
     if (route === '/weather/analysis' && method === 'GET') {
       const user = getUserFromToken(request)
       if (!user) return handleCORS(NextResponse.json({ error: 'Ikke autoriseret' }, { status: 401 }))
@@ -2208,12 +2339,20 @@ async function handleRoute(request, { params }) {
       }
       const rangeStart = start.toISOString().slice(0, 10)
       const rangeEnd = end.toISOString().slice(0, 10)
-      const dmiDays = await fetchDmiDailyWeather(lat, lon, rangeStart, rangeEnd)
-      const dmiByDate = Object.fromEntries((dmiDays || []).map((day) => [day.date, day]))
       const todayStr = new Date().toISOString().slice(0, 10)
+      const hasFutureDates = dateList.some((d) => d > todayStr)
+      const [dmiDays, forecastFeatures] = await Promise.all([
+        fetchDmiDailyWeather(lat, lon, rangeStart, rangeEnd),
+        hasFutureDates ? fetchForecastEdr(lat, lon) : Promise.resolve([])
+      ])
+      const dmiByDate = Object.fromEntries((dmiDays || []).map((day) => [day.date, day]))
+      const forecastDays = aggregateForecastToDaily(forecastFeatures || [])
+      const forecastByDate = Object.fromEntries((forecastDays || []).map((day) => [day.date, day]))
       const days = dateList.map((dateStr) => {
         const fromDmi = dmiByDate[dateStr]
         if (fromDmi) return fromDmi
+        const fromForecast = forecastByDate[dateStr]
+        if (fromForecast) return fromForecast
         return getDailyWeatherUnavailable(dateStr, dateStr > todayStr)
       })
       const withData = days.filter(x => x.status !== 'UNKNOWN')
@@ -2498,9 +2637,13 @@ async function handleRoute(request, { params }) {
       try {
         const sendgridUrl = 'https://api.sendgrid.com/v3/mail/send'
         
+        if (!process.env.SENDGRID_API_KEY || process.env.SENDGRID_API_KEY === 'your_sendgrid_key_here') {
+          return handleCORS(NextResponse.json({ error: 'SendGrid ikke konfigureret. Sæt SENDGRID_API_KEY og SENDGRID_FROM_EMAIL i Vercel/env.' }, { status: 500 }))
+        }
+        const fromEmail = process.env.SENDGRID_FROM_EMAIL || 'info@smartrep.nu'
         const emailData = {
           personalizations: [{ to: [{ email: to }] }],
-          from: { email: 'noreply@smartrep.dk', name: 'SMARTREP' },
+          from: { email: fromEmail, name: 'SMARTREP' },
           subject: subject,
           content: [{ type: 'text/html', value: html }]
         }
@@ -2514,6 +2657,8 @@ async function handleRoute(request, { params }) {
           body: JSON.stringify(emailData)
         })
 
+        const errorBody = await sendgridResponse.text()
+
         // Log the email
         await db.collection('communications').insertOne({
           id: uuidv4(),
@@ -2522,7 +2667,7 @@ async function handleRoute(request, { params }) {
           to: to,
           subject: subject,
           content: html,
-          status: sendgridResponse.ok ? 'sent' : 'failed',
+          status: (sendgridResponse.ok || sendgridResponse.status === 202) ? 'sent' : 'failed',
           sentBy: user.id,
           sentByName: user.name,
           createdAt: new Date()
@@ -2530,14 +2675,34 @@ async function handleRoute(request, { params }) {
 
         if (sendgridResponse.ok || sendgridResponse.status === 202) {
           return handleCORS(NextResponse.json({ success: true }))
-        } else {
-          const errorData = await sendgridResponse.json().catch(() => ({}))
-          return handleCORS(NextResponse.json({ error: errorData.errors?.[0]?.message || 'Email fejlede' }, { status: 400 }))
         }
+        let errMsg = 'Email fejlede'
+        try {
+          const parsed = JSON.parse(errorBody)
+          errMsg = parsed.errors?.[0]?.message || parsed.message || errMsg
+        } catch (_) {
+          if (errorBody) errMsg = errorBody.slice(0, 200)
+        }
+        console.error('SendGrid error', sendgridResponse.status, errMsg)
+        return handleCORS(NextResponse.json({ error: `SendGrid ${sendgridResponse.status}: ${errMsg}` }, { status: 400 }))
       } catch (error) {
         console.error('Email error:', error)
         return handleCORS(NextResponse.json({ error: 'Email kunne ikke sendes' }, { status: 500 }))
       }
+    }
+
+    // Email status (fejlsøgning) – GET /api/email/status
+    if (route === '/email/status' && method === 'GET') {
+      const user = getUserFromToken(request)
+      if (!user || user.role !== 'admin') {
+        return handleCORS(NextResponse.json({ error: 'Ikke autoriseret' }, { status: 401 }))
+      }
+      const configured = !!(process.env.SENDGRID_API_KEY && process.env.SENDGRID_API_KEY !== 'your_sendgrid_key_here')
+      return handleCORS(NextResponse.json({
+        configured,
+        fromEmail: process.env.SENDGRID_FROM_EMAIL || 'info@smartrep.nu',
+        hint: configured ? 'Tjek at fromEmail er verifieret i SendGrid (Settings → Sender Authentication)' : 'Sæt SENDGRID_API_KEY og SENDGRID_FROM_EMAIL i Vercel/env'
+      }))
     }
 
     // ============ COMMUNICATIONS LOG ============
@@ -2630,27 +2795,12 @@ async function handleRoute(request, { params }) {
       let success = false
       let errorMsg = null
 
-      // Send email
-      if (type === 'email' && to && process.env.SENDGRID_API_KEY) {
-        try {
-          const emailTemplate = selectedTemplate.email
-          await fetch('https://api.sendgrid.com/v3/mail/send', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${process.env.SENDGRID_API_KEY}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              personalizations: [{ to: [{ email: to, name: contactName }] }],
-              from: { email: process.env.SENDGRID_FROM_EMAIL || 'noreply@smartrep.dk', name: 'SMARTREP' },
-              subject: emailTemplate.subject,
-              content: [{ type: 'text/html', value: emailTemplate.html }]
-            })
-          })
-          success = true
-        } catch (err) {
-          errorMsg = err.message
-        }
+      // Send email (bruger sendEmailWithTemplate – samme from som alle andre mails)
+      if (type === 'email' && to) {
+        const emailTemplate = selectedTemplate.email
+        const result = await sendEmailWithTemplate(to, emailTemplate.subject, emailTemplate.html)
+        success = result.success
+        if (!result.success) errorMsg = result.error
       }
 
       // Send SMS
@@ -3013,7 +3163,7 @@ async function handleRoute(request, { params }) {
         return handleCORS(NextResponse.json({ error: 'Ikke autoriseret' }, { status: 401 }))
       }
       const body = await request.json()
-      const { taskId, serviceZone, taskType, addGlassRisk, addChemicalCleaning, glassNote, chemicalNote, distance_km, drive_time_minutes, taskSummary, transport_km_rate, transport_time_rate, transport_km_discount_percent, transport_time_discount_percent } = body
+      const { taskId, serviceZone, taskType, addGlassRisk, addChemicalCleaning, glassNote, chemicalNote, distance_km, drive_time_minutes, taskSummary, deliveryTimeType, deliveryTimeDate, transport_km_rate, transport_time_rate, transport_km_discount_percent, transport_time_discount_percent } = body
       const task = await db.collection('tasks').findOne({ id: taskId })
       if (!task) return handleCORS(NextResponse.json({ error: 'Opgave ikke fundet' }, { status: 404 }))
 
@@ -3089,7 +3239,9 @@ async function handleRoute(request, { params }) {
           taskNumber: task.taskNumber,
           damages: (task.damages || []).map(d => ({ part: d.part, location: d.location, notes: d.notes, quantity: d.quantity ?? 1, color: d.color || null }))
         },
-        taskSummary: (taskSummary != null && String(taskSummary).trim()) ? String(taskSummary).trim() : ''
+        taskSummary: (taskSummary != null && String(taskSummary).trim()) ? String(taskSummary).trim() : '',
+        deliveryTimeType: deliveryTimeType || '2-3_weeks',
+        deliveryTimeDate: deliveryTimeType === 'by_date' && deliveryTimeDate ? deliveryTimeDate : null
       }
       await db.collection('order_confirmations').insertOne(confirmation)
       await db.collection('tasks').updateOne(
@@ -3193,7 +3345,9 @@ async function handleRoute(request, { params }) {
           expiresAt: farFuture,
           items: baseItems,
           taskInfo: demoTaskInfo,
-          taskSummary: 'Lakering af bundstykker og ramme. Dette er forhåndsvisning med dummydata.'
+          taskSummary: 'Lakering af bundstykker og ramme. Dette er forhåndsvisning med dummydata.',
+          deliveryTimeType: '2-3_weeks',
+          deliveryTimeDate: null
         }))
       }
       if (token === 'demo-udvidet') {
@@ -3208,6 +3362,8 @@ async function handleRoute(request, { params }) {
           items: [...baseItems, { type: 'extended_zone', customNote: '', accepted: null, respondedAt: null }],
           taskInfo: demoTaskInfo,
           taskSummary: 'Lakering i udvidet serviceområde. Dummydata.',
+          deliveryTimeType: '10_workdays',
+          deliveryTimeDate: null,
           distance_km: 85,
           drive_time_minutes: 72,
           transport_km_rate: 3.75,
@@ -3218,6 +3374,8 @@ async function handleRoute(request, { params }) {
         }))
       }
       if (token === 'demo-glas') {
+        const futureDate = new Date()
+        futureDate.setDate(futureDate.getDate() + 21)
         return handleCORS(NextResponse.json({
           id: 'demo',
           taskId: 'demo',
@@ -3228,7 +3386,9 @@ async function handleRoute(request, { params }) {
           expiresAt: farFuture,
           items: [...baseItems, { type: 'glass_risk', customNote: 'Termorude mod have – begrænset succes mulig.', accepted: null, respondedAt: null }],
           taskInfo: demoTaskInfo,
-          taskSummary: 'Glaspolering med særlige vilkår. Dummydata.'
+          taskSummary: 'Glaspolering med særlige vilkår. Dummydata.',
+          deliveryTimeType: 'by_date',
+          deliveryTimeDate: futureDate.toISOString().slice(0, 10)
         }))
       }
       if (token === 'demo-kemisk') {
@@ -3242,7 +3402,9 @@ async function handleRoute(request, { params }) {
           expiresAt: farFuture,
           items: [...baseItems, { type: 'chemical_cleaning', customNote: 'Hvide aflejringer – vi kan ikke garantere varighed.', accepted: null, respondedAt: null }],
           taskInfo: demoTaskInfo,
-          taskSummary: 'Kemisk afrensning. Dummydata.'
+          taskSummary: 'Kemisk afrensning. Dummydata.',
+          deliveryTimeType: '2-3_weeks',
+          deliveryTimeDate: null
         }))
       }
       const conf = await db.collection('order_confirmations').findOne({ token })
