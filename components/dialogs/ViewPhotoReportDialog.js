@@ -2,15 +2,17 @@
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { formatAddress, taskAddressString } from '@/lib/utils'
 
 export default function ViewPhotoReportDialog({ report, task, open, onClose, user, onUpdate, onSend, onReset }) {
   if (!report) return null
+  const addr = task ? (formatAddress(report.taskAddress) || taskAddressString(task)) : ''
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Fotorapport - {task?.address || 'Ingen adresse'}</DialogTitle>
+          <DialogTitle>Fotorapport - {addr || 'Ingen adresse'}</DialogTitle>
         </DialogHeader>
         
         <div className="space-y-4">

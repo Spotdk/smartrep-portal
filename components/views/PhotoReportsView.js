@@ -11,6 +11,7 @@ import {
 import { format } from 'date-fns'
 import { da } from 'date-fns/locale'
 import { api, BRAND_BLUE } from '@/lib/constants'
+import { formatAddress } from '@/lib/utils'
 import dynamic from 'next/dynamic'
 
 // Lazy load the dialog
@@ -188,7 +189,7 @@ export default function PhotoReportsView({ user }) {
                         </span>
                       </div>
                       <h3 className="font-semibold text-gray-900">
-                        {report.taskAddress || task?.address || 'Ingen adresse'}
+                        {formatAddress(report.taskAddress) || formatAddress(task?.address) || (typeof task?.address === 'string' ? task.address : '') || 'Ingen adresse'}
                       </h3>
                       <p className="text-sm text-gray-500">
                         Opgave #{report.taskNumber || task?.taskNumber || 'N/A'} • {report.companyName || task?.companyName}

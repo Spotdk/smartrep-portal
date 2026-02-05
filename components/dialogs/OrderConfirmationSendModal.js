@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Loader2, MapPin, AlertTriangle } from 'lucide-react'
 import { api, BRAND_BLUE } from '@/lib/constants'
+import { taskAddressString } from '@/lib/utils'
 
 const ORIGIN_FREDERICIA = 'Fredericia, Denmark'
 
@@ -24,7 +25,7 @@ const OrderConfirmationSendModal = ({ task, user, open, onClose, onSent }) => {
   const [sendError, setSendError] = useState(null)
   const [sentConfirmUrl, setSentConfirmUrl] = useState(null)
 
-  const destination = task ? `${task.address || ''}, ${task.postalCode || ''} ${task.city || ''}, Denmark`.replace(/\s*,\s*,/g, ',').replace(/^,\s*/, '').trim() : ''
+  const destination = task ? [taskAddressString(task), task.postalCode, task.city, 'Denmark'].filter(Boolean).join(', ').trim() : ''
 
   // Step 0: Hent afstand/køretid ved åbning; nulstil send-state
   useEffect(() => {
@@ -125,7 +126,7 @@ const OrderConfirmationSendModal = ({ task, user, open, onClose, onSent }) => {
                 Afstandsberegning
               </div>
               <p className="text-sm text-gray-600 mb-3">
-                Destination: {task?.address}, {task?.postalCode} {task?.city}
+                Destination: {task ? [taskAddressString(task), task.postalCode, task.city].filter(Boolean).join(', ') : ''}
               </p>
               {screening.loading && (
                 <div className="flex items-center gap-2 py-4">

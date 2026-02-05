@@ -14,6 +14,7 @@ import {
 import { format } from 'date-fns'
 import { da } from 'date-fns/locale'
 import { api, BRAND_BLUE, STATUS_CONFIG, getIdDaysColor } from '@/lib/constants'
+import { taskAddressString } from '@/lib/utils'
 import WeatherIcon from '@/components/shared/WeatherIcon'
 
 // Lazy load the heavy dialogs
@@ -26,7 +27,8 @@ const CreateTaskDialog = dynamic(() => import('@/components/dialogs/CreateTaskDi
   loading: () => null
 })
 
-const TasksView = ({ user, tasksWithMessages = [] }) => {
+const TasksView = ({ user, tasksWithMessages }) => {
+  const safeTasksWithMessages = Array.isArray(tasksWithMessages) ? tasksWithMessages : []
   const [tasks, setTasks] = useState([])
   const [allTasks, setAllTasks] = useState([]) // For search across all tabs
   const [counts, setCounts] = useState({})
@@ -69,7 +71,7 @@ const TasksView = ({ user, tasksWithMessages = [] }) => {
 
   // Check if task has customer messages
   const taskHasCustomerMessage = (taskId) => {
-    return tasksWithMessages.includes(taskId)
+    return safeTasksWithMessages.includes(taskId)
   }
 
   // Toggle task selection
@@ -305,8 +307,9 @@ const TasksView = ({ user, tasksWithMessages = [] }) => {
   }
 
   const navigateToAddress = (task) => {
-    const address = encodeURIComponent(`${task.address}, ${task.postalCode} ${task.city}, Denmark`)
-    window.open(`https://www.google.com/maps/dir/?api=1&destination=${address}`, '_blank')
+    const addr = taskAddressString(task)
+    const fullAddr = [addr, task?.postalCode, task?.city, 'Denmark'].filter(Boolean).join(', ')
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(fullAddr)}`, '_blank')
   }
 
   const generateWorkCardPdf = async (task) => {
@@ -334,7 +337,7 @@ const TasksView = ({ user, tasksWithMessages = [] }) => {
     doc.setFont('helvetica', 'bold')
     doc.text('Adresse:', 15, 62)
     doc.setFont('helvetica', 'normal')
-    doc.text(`${task.address}, ${task.postalCode} ${task.city}`, 15, 69)
+    doc.text([taskAddressString(task), task?.postalCode, task?.city].filter(Boolean).join(', ') || '-', 15, 69)
     doc.setFont('helvetica', 'bold')
     doc.text('Kontakt:', 110, 45)
     doc.setFont('helvetica', 'normal')
@@ -675,7 +678,7 @@ const TasksView = ({ user, tasksWithMessages = [] }) => {
                     )}
                     {visibleColumns.address && (
                       <td className="px-3 py-3 text-sm text-gray-900">
-                        {task.address}
+                        {taskAddressString(task) || '—'}
                       </td>
                     )}
                     {visibleColumns.postalCode && (

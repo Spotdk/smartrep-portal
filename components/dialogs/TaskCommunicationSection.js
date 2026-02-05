@@ -17,6 +17,7 @@ import {
 import { format } from 'date-fns'
 import { da } from 'date-fns/locale'
 import { api, BRAND_BLUE, STATUS_CONFIG } from '@/lib/constants'
+import { taskAddressString } from '@/lib/utils'
 
 const TaskCommunicationSection = ({ task, user }) => {
   const [expanded, setExpanded] = useState(false)
@@ -527,7 +528,7 @@ const TaskCommunicationSection = ({ task, user }) => {
                 <Label className="text-xs text-gray-500 mb-2 block">SMS der sendes:</Label>
                 <p className="text-sm text-gray-700">
                   Hej {task.owner1Name}<br/><br/>
-                  Vi er af {task.companyName} blevet bedt om at udføre en eller flere reparationer på {task.address}, {task.postalCode} {task.city}.<br/><br/>
+                  Vi er af {task.companyName} blevet bedt om at udføre en eller flere reparationer på {[taskAddressString(task), task.postalCode, task.city].filter(Boolean).join(', ')}.<br/><br/>
                   I behøver ikke foretage jer yderligere på nuværende tidspunkt. Vi kontakter jer igen, så snart det er muligt at planlægge udførsel.<br/><br/>
                   Mvh. SMARTREP
                 </p>

@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox'
 import { Settings, RefreshCw } from 'lucide-react'
 import { api, BRAND_BLUE, getIdDaysColor } from '@/lib/constants'
+import { formatAddress } from '@/lib/utils'
 import WeatherIcon from '@/components/shared/WeatherIcon'
 import { registerLicense } from '@syncfusion/ej2-base'
 import dynamic from 'next/dynamic'
@@ -401,7 +402,7 @@ export default function CalendarView() {
                       <label htmlFor={`tech-${tech.id}`} className="font-medium cursor-pointer">
                         {tech.name}
                       </label>
-                      <p className="text-xs text-gray-500">{tech.address}</p>
+                      <p className="text-xs text-gray-500">{formatAddress(tech.address) || (typeof tech.address === 'string' ? tech.address : '') || '—'}</p>
                     </div>
                   </div>
                 ))}

@@ -5,15 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ClipboardList, Building2, FileImage, CheckCircle, Loader2 } from 'lucide-react'
 import { api, BRAND_BLUE, STATUS_CONFIG } from '@/lib/constants'
-
-function formatAddress(addr) {
-  if (typeof addr === 'string') return addr
-  if (addr && typeof addr === 'object') {
-    const parts = [addr.street, addr.vejnavn, addr.address, addr.postalCode, addr.postnr, addr.city]
-    return parts.filter(Boolean).join(', ') || '—'
-  }
-  return '—'
-}
+import { taskAddressString } from '@/lib/utils'
 
 export default function Dashboard({ user }) {
   const [stats, setStats] = useState(null)
@@ -54,7 +46,7 @@ export default function Dashboard({ user }) {
                 <div key={task.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <div className="flex items-center gap-3">
                     <div className={`w-2 h-2 rounded-full ${cfg.color || 'bg-gray-400'}`} />
-                    <div><p className="font-medium text-sm">#{task.taskNumber} - {formatAddress(task.address) || [task.postalCode, task.city].filter(Boolean).join(' ') || '—'}</p><p className="text-xs text-gray-500">{task.companyName}</p></div>
+                    <div><p className="font-medium text-sm">#{task.taskNumber} - {taskAddressString(task) || '—'}</p><p className="text-xs text-gray-500">{task.companyName}</p></div>
                   </div>
                   <Badge variant="outline" className={cfg.textColor || 'text-gray-600'}>{cfg.label || task.status || '—'}</Badge>
                 </div>

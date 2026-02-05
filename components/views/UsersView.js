@@ -12,6 +12,7 @@ import {
   Users, Plus, Pencil, Trash2, Loader2, Search, User, Crown, Settings, Wrench
 } from 'lucide-react'
 import { api, BRAND_BLUE } from '@/lib/constants'
+import { formatAddress } from '@/lib/utils'
 
 export default function UsersView() {
   const [users, setUsers] = useState([])
@@ -77,7 +78,7 @@ export default function UsersView() {
       setEditingUser(user)
       setUserForm({
         name: user.name || '',
-        address: user.address || '',
+        address: formatAddress(user.address) || (typeof user.address === 'string' ? user.address : '') || '',
         email: user.email || '',
         phone: user.phone || '',
         roles: user.roles || [],
@@ -276,7 +277,7 @@ export default function UsersView() {
                       
                       <div className="ml-13 space-y-2">
                         <div className="flex items-center gap-2 text-sm text-gray-600">
-                          <span>📍 {user.address}</span>
+                          <span>📍 {formatAddress(user.address) || (typeof user.address === 'string' ? user.address : '') || '—'}</span>
                         </div>
                         <div className="flex items-center gap-2 text-sm text-gray-600">
                           <span>📞 {user.phone}</span>

@@ -20,6 +20,7 @@ import {
 import { format } from 'date-fns'
 import { da } from 'date-fns/locale'
 import { api, BRAND_BLUE, STATUS_CONFIG, getIdDaysColor } from '@/lib/constants'
+import { formatAddress, taskAddressString } from '@/lib/utils'
 import WeatherIcon from '@/components/shared/WeatherIcon'
 
 // Lazy load sub-sections
@@ -52,7 +53,7 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
   useEffect(() => {
     if (task) {
       setEditData({
-        address: task.address || '',
+        address: formatAddress(task.address) || (typeof task.address === 'string' ? task.address : '') || '',
         postalCode: task.postalCode || '',
         city: task.city || '',
         caseNumber: task.caseNumber || '',
@@ -254,7 +255,8 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
   }
 
   // Google Maps embed URL
-  const mapUrl = task.address ? `https://www.google.com/maps/embed/v1/place?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY || 'AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU17R8'}&q=${encodeURIComponent(`${task.address}, ${task.postalCode} ${task.city}, Denmark`)}&zoom=15` : null
+  const taskAddrStr = taskAddressString(task)
+  const mapUrl = taskAddrStr ? `https://www.google.com/maps/embed/v1/place?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY || 'AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU17R8'}&q=${encodeURIComponent([taskAddrStr, task?.postalCode, task?.city, 'Denmark'].filter(Boolean).join(', '))}&zoom=15` : null
 
   // Display value (from editData if editing, otherwise from task)
   const getValue = (field) => isEditing ? editData[field] : task[field]
@@ -360,7 +362,7 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
                 </div>
               ) : (
                 <>
-                  <p className="font-semibold text-gray-900">{task.address}</p>
+                  <p className="font-semibold text-gray-900">{taskAddressString(task) || '—'}</p>
                   <p className="text-sm text-gray-500">{task.postalCode} {task.city}</p>
                 </>
               )}
@@ -601,7 +603,7 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
               <div>
                 <Label className="text-gray-500 text-xs mb-2 block">Billeder ({task.images.length})</Label>
                 <div className="grid grid-cols-3 gap-2">
-                  {task.images.map((img, idx) => (
+                  {(task.images || []).map((img, idx) => (
                     <a key={idx} href={img.url || img} target="_blank" rel="noopener noreferrer">
                       <img 
                         src={img.url || img} 
@@ -619,7 +621,7 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
               <div>
                 <Label className="text-gray-500 text-xs mb-2 block">Dokumenter ({task.documents.length})</Label>
                 <div className="space-y-2">
-                  {task.documents.map((doc, idx) => (
+                  {(task.documents || []).map((doc, idx) => (
                     <a 
                       key={idx} 
                       href={doc.url || doc} 
@@ -640,7 +642,7 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
               <div>
                 <Label className="text-gray-500 text-xs mb-2 block">Vedhæftede filer ({task.files.length})</Label>
                 <div className="grid grid-cols-2 gap-3">
-                  {task.files.filter(f => f.type === 'image').map((file, idx) => (
+                  {(task.files || []).filter(f => f.type === 'image').map((file, idx) => (
                     <a key={file.id || idx} href={file.url} target="_blank" rel="noopener noreferrer" className="block">
                       <img 
                         src={file.url} 
@@ -651,9 +653,9 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
                     </a>
                   ))}
                 </div>
-                {task.files.filter(f => f.type === 'document' || f.type === 'pdf').length > 0 && (
+                {(task.files || []).filter(f => f.type === 'document' || f.type === 'pdf').length > 0 && (
                   <div className="space-y-2 mt-3">
-                    {task.files.filter(f => f.type === 'document' || f.type === 'pdf').map((file, idx) => (
+                    {(task.files || []).filter(f => f.type === 'document' || f.type === 'pdf').map((file, idx) => (
                       <a 
                         key={file.id || idx} 
                         href={file.url} 
@@ -697,7 +699,7 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
                 variant="outline" 
                 size="sm" 
                 className="w-full mt-2"
-                onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${task.address}, ${task.postalCode} ${task.city}, Denmark`)}`, '_blank')}
+                onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent([taskAddrStr, task?.postalCode, task?.city, 'Denmark'].filter(Boolean).join(', '))}`, '_blank')}
               >
                 <Navigation className="w-4 h-4 mr-2" />
                 Naviger til adressen

@@ -8,6 +8,7 @@ import { Check, Send, DollarSign, Receipt, Loader2 } from 'lucide-react'
 import { format } from 'date-fns'
 import { da } from 'date-fns/locale'
 import { api, BRAND_BLUE } from '@/lib/constants'
+import { formatAddress } from '@/lib/utils'
 
 export default function InvoicesView() {
   const [invoices, setInvoices] = useState([])
@@ -108,7 +109,7 @@ export default function InvoicesView() {
                   <tr key={invoice.id} className="border-b hover:bg-gray-50">
                     <td className="p-3 font-mono">{invoice.invoiceNumber}</td>
                     <td className="p-3 font-medium">{invoice.companyName}</td>
-                    <td className="p-3 text-gray-500">{invoice.address}</td>
+                    <td className="p-3 text-gray-500">{formatAddress(invoice.address) || (typeof invoice.address === 'string' ? invoice.address : '') || '—'}</td>
                     <td className="p-3 text-right font-bold">{invoice.total?.toLocaleString('da-DK', { minimumFractionDigits: 2 })} kr</td>
                     <td className="p-3 text-center">{getStatusBadge(invoice.status)}</td>
                     <td className="p-3 text-gray-500">{invoice.createdAt ? format(new Date(invoice.createdAt), 'dd/MM/yyyy', { locale: da }) : '-'}</td>

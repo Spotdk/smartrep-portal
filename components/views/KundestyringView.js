@@ -12,6 +12,7 @@ import {
   Loader2, Search, Pencil, UserPlus, UserCheck, Crown
 } from 'lucide-react'
 import { api, BRAND_BLUE, getIdDaysColor } from '@/lib/constants'
+import { formatAddress, taskAddressString } from '@/lib/utils'
 
 export default function KundestyringView() {
   const [companies, setCompanies] = useState([])
@@ -159,9 +160,10 @@ export default function KundestyringView() {
 
   // Filter companies and contacts based on search
   const filteredCompanies = companies.filter(company => {
+    const addrStr = formatAddress(company.address) || (typeof company.address === 'string' ? company.address : '')
     const companyMatch = company.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          company.city?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         company.address?.toLowerCase().includes(searchTerm.toLowerCase())
+                         addrStr.toLowerCase().includes(searchTerm.toLowerCase())
     
     const contactMatch = getCompanyContacts(company.id).some(contact =>
       contact.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -183,7 +185,7 @@ export default function KundestyringView() {
       setEditingCompany(company)
       setCompanyForm({
         name: company.name || '',
-        address: company.address || '',
+        address: formatAddress(company.address) || (typeof company.address === 'string' ? company.address : '') || '',
         postalCode: company.postalCode || '',
         city: company.city || '',
         invoiceEmail: company.invoiceEmail || '',
@@ -382,7 +384,7 @@ export default function KundestyringView() {
                         <div>
                           <h3 className="font-semibold text-gray-900">{company.name}</h3>
                           <p className="text-sm text-gray-500">
-                            {company.address && `${company.address}, `}{company.postalCode} {company.city}
+                            {formatAddress(company.address) && `${formatAddress(company.address)}, `}{company.postalCode} {company.city}
                           </p>
                         </div>
                       </div>
@@ -578,7 +580,7 @@ export default function KundestyringView() {
                                           {task.deadline ? new Date(task.deadline).toLocaleDateString('da-DK') : '-'}
                                         </td>
                                         <td className="py-2">
-                                          <div>{task.address}</div>
+                                          <div>{taskAddressString(task) || '—'}</div>
                                           <div className="text-xs text-gray-500">{task.postalCode} {task.city}</div>
                                         </td>
                                         <td className="py-2">
@@ -842,7 +844,7 @@ export default function KundestyringView() {
 
               <div>
                 <Label className="text-gray-500 text-xs">Adresse</Label>
-                <p className="font-medium">{viewingTask.address}</p>
+                <p className="font-medium">{taskAddressString(viewingTask) || '—'}</p>
                 <p className="text-sm text-gray-500">{viewingTask.postalCode} {viewingTask.city}</p>
               </div>
 

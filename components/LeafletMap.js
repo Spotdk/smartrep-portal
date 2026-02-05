@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { taskAddressString } from '@/lib/utils'
 
 const BRAND_BLUE = '#0133ff'
 
@@ -107,7 +108,7 @@ export default function LeafletMap({ tasks, selectedTask, onTaskSelect, height =
         .bindPopup(`
           <div style="min-width: 180px; padding: 4px;">
             <div style="font-weight: bold; color: ${BRAND_BLUE};">#${task.taskNumber}</div>
-            <div style="margin-top: 4px;">${task.address}</div>
+            <div style="margin-top: 4px;">${taskAddressString(task) || '—'}</div>
             <div style="color: #666; font-size: 12px;">${task.postalCode} ${task.city}</div>
             ${task.companyName ? `<div style="color: ${BRAND_BLUE}; margin-top: 4px; font-size: 12px;">${task.companyName}</div>` : ''}
           </div>

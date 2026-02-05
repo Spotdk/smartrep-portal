@@ -10,6 +10,7 @@ import {
   Plus, Navigation, Eye, Printer, Loader2, ClipboardList, X, MapPin, User, Phone
 } from 'lucide-react'
 import { api, BRAND_BLUE, STATUS_CONFIG } from '@/lib/constants'
+import { taskAddressString } from '@/lib/utils'
 import WeatherIcon from '@/components/shared/WeatherIcon'
 import dynamic from 'next/dynamic'
 
@@ -123,8 +124,8 @@ export default function TechnicianTasksView({ user }) {
   }
 
   const navigateToAddress = (task) => {
-    const address = encodeURIComponent(`${task.address}, ${task.postalCode} ${task.city}, Denmark`)
-    window.open(`https://www.google.com/maps/dir/?api=1&destination=${address}`, '_blank')
+    const fullAddr = [taskAddressString(task), task?.postalCode, task?.city, 'Denmark'].filter(Boolean).join(', ')
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(fullAddr)}`, '_blank')
   }
 
   const generateWorkCardPdf = async (task) => {
@@ -151,7 +152,7 @@ export default function TechnicianTasksView({ user }) {
     doc.setFont('helvetica', 'bold')
     doc.text('Adresse:', 15, 62)
     doc.setFont('helvetica', 'normal')
-    doc.text(`${task.address}, ${task.postalCode} ${task.city}`, 15, 69)
+    doc.text([taskAddressString(task), task?.postalCode, task?.city].filter(Boolean).join(', ') || '-', 15, 69)
     
     if (task.damages?.length > 0) {
       const rows = task.damages.map((d, i) => ['☐', `Skade ${i+1}: ${options?.buildingParts?.find(p=>p.value===d.part)?.label||d.part}`, `Antal: ${d.quantity}`, ''])
@@ -269,7 +270,7 @@ export default function TechnicianTasksView({ user }) {
                     <div className="flex items-start gap-2">
                       <MapPin className="w-5 h-5 text-gray-400 mt-0.5" />
                       <div>
-                        <p className="font-medium">{task.address}</p>
+                        <p className="font-medium">{taskAddressString(task) || '—'}</p>
                         <p className="text-sm text-gray-500">{task.postalCode} {task.city}</p>
                       </div>
                     </div>
@@ -367,7 +368,7 @@ export default function TechnicianTasksView({ user }) {
                 </div>
                 <div>
                   <Label className="text-xs text-gray-500">Adresse</Label>
-                  <p className="font-medium">{selectedTask.address}</p>
+                  <p className="font-medium">{taskAddressString(selectedTask) || '—'}</p>
                   <p className="text-sm text-gray-500">{selectedTask.postalCode} {selectedTask.city}</p>
                 </div>
                 <div>

@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { api, BRAND_BLUE, STATUS_CONFIG } from '@/lib/constants'
+import { taskAddressString } from '@/lib/utils'
 
 // Dynamic import of Leaflet Map (client-side only - uses window)
 const LeafletMap = dynamic(() => import('@/components/LeafletMap'), {
@@ -206,7 +207,7 @@ export default function MapView() {
                     <div className="flex items-start gap-2">
                       <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: BRAND_BLUE }} />
                       <div>
-                        <p className="text-sm font-medium">{task.address}</p>
+                        <p className="text-sm font-medium">{taskAddressString(task) || '—'}</p>
                         <p className="text-xs text-gray-500">{task.postalCode} {task.city}</p>
                       </div>
                     </div>
@@ -275,7 +276,7 @@ export default function MapView() {
                       </span>
                       {getWeatherIcon(selectedTask.weatherType)}
                     </div>
-                    <p className="font-medium">{selectedTask.address}</p>
+                    <p className="font-medium">{taskAddressString(selectedTask) || '—'}</p>
                     <p className="text-sm text-gray-500">{selectedTask.postalCode} {selectedTask.city}</p>
                     <p className="text-sm text-gray-600 mt-1">{selectedTask.companyName}</p>
                     {(selectedTask.owner1Name || selectedTask.contactName) && (
@@ -295,7 +296,7 @@ export default function MapView() {
                     </Badge>
                     <Button 
                       size="sm" 
-                      onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(selectedTask.address + ', ' + selectedTask.city + ', Denmark')}`, '_blank')}
+                      onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent([taskAddressString(selectedTask), selectedTask?.postalCode, selectedTask?.city, 'Denmark'].filter(Boolean).join(', '))}`, '_blank')}
                       className="text-white"
                       style={{ backgroundColor: BRAND_BLUE }}
                     >
