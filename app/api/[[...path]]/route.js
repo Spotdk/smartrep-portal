@@ -944,7 +944,8 @@ async function handleRoute(request, { params }) {
       }
 
       const companies = await db.collection('companies').find(query).sort({ name: 1 }).toArray()
-      const cleaned = companies.map(({ _id, ...rest }) => rest)
+      let cleaned = companies.map(({ _id, ...rest }) => rest)
+      if (user.role === 'customer') cleaned = cleaned.map(({ rating, ...c }) => c)
       return handleCORS(NextResponse.json(cleaned))
     }
 
@@ -964,6 +965,7 @@ async function handleRoute(request, { params }) {
         city: body.city || '',
         invoiceEmail: body.invoiceEmail || '',
         phone: body.phone || '',
+        rating: ['A', 'B', 'C', 'D'].includes(body.rating) ? body.rating : 'B',
         createdAt: new Date()
       }
 
@@ -971,15 +973,18 @@ async function handleRoute(request, { params }) {
       return handleCORS(NextResponse.json(company))
     }
 
-    // Get single company - GET /api/companies/:id
+    // Get single company - GET /api/companies/:id (rating skjules for kunde)
     if (route.startsWith('/companies/') && method === 'GET' && path.length === 2) {
+      const user = getUserFromToken(request)
       const companyId = path[1]
       const company = await db.collection('companies').findOne({ id: companyId })
       if (!company) {
         return handleCORS(NextResponse.json({ error: 'Firma ikke fundet' }, { status: 404 }))
       }
-      const { _id, ...rest } = company
-      return handleCORS(NextResponse.json(rest))
+      const { _id, rating, ...rest } = company
+      const out = { ...rest, ...(rating != null ? { rating } : {}) }
+      if (user?.role === 'customer' && user.companyId === companyId) delete out.rating
+      return handleCORS(NextResponse.json(out))
     }
 
     // Update company - PUT /api/companies/:id
@@ -2534,29 +2539,36 @@ async function handleRoute(request, { params }) {
 
     // ============ OPTIONS/ENUMS ============
     
-    // Get options - GET /api/options (taskTypes kan overstyres fra Indstillinger > Datafelter)
+    // Get options - GET /api/options (Bygningsdele, Placeringer, Farver, Type tags fra Indstillinger > Datafelter)
     if (route === '/options' && method === 'GET') {
       const defaultTaskTypes = [
-        { value: 'PLA', label: 'PLA (Plast)' },
+        { value: 'ALU', label: 'ALU (Aluprofil)' },
         { value: 'BUN', label: 'BUN (Bundstykke)' },
-        { value: 'GLA', label: 'GLA (Glas)' },
-        { value: 'ALU', label: 'ALU (Aluminium)' },
+        { value: 'PLA', label: 'PLA (Pladedør)' },
         { value: 'TRÆ', label: 'TRÆ (Træ)' },
+        { value: 'GLA', label: 'GLA (Glas)' },
+        { value: 'SPA', label: 'SPA (Sparkeplade)' },
         { value: 'COA', label: 'COA (Coating)' },
-        { value: 'INS', label: 'INS (Isolering)' },
-        { value: 'REN', label: 'REN (Rengøring)' }
+        { value: 'AFR', label: 'AFR (Afrensning)' },
+        { value: 'KEM', label: 'KEM (Kemisk afrensning)' },
+        { value: 'GEN', label: 'GEN (Gennemgang)' }
       ]
+      let buildingParts = BUILDING_PARTS
+      let colors = COLORS
+      let locations = LOCATIONS
       let taskTypes = defaultTaskTypes
       try {
         const customOptions = await db.collection('settings').findOne({ type: 'data_fields' })
-        if (customOptions?.fields?.taskTypes?.length) {
-          taskTypes = customOptions.fields.taskTypes
-        }
+        const fields = customOptions?.fields
+        if (fields?.buildingParts?.length) buildingParts = fields.buildingParts
+        if (fields?.colors?.length) colors = fields.colors
+        if (fields?.locations?.length) locations = fields.locations
+        if (fields?.taskTypes?.length) taskTypes = fields.taskTypes
       } catch (_) { /* use defaults */ }
       return handleCORS(NextResponse.json({
-        buildingParts: BUILDING_PARTS,
-        colors: COLORS,
-        locations: LOCATIONS,
+        buildingParts,
+        colors,
+        locations,
         statusLabels: STATUS_LABELS,
         categories: [
           { value: 'foraflevering', label: 'Foraflevering' },
@@ -2617,24 +2629,27 @@ async function handleRoute(request, { params }) {
       }
 
       const body = await request.json()
-      const { to, message, taskId } = body
+      const { to, message, taskId, twoWay } = body
 
       if (!to || !message) {
         return handleCORS(NextResponse.json({ error: 'Telefonnummer og besked er påkrævet' }, { status: 400 }))
       }
 
       try {
-        // Twilio integration
         const accountSid = process.env.TWILIO_ACCOUNT_SID
         const authToken = process.env.TWILIO_AUTH_TOKEN
-        const fromNumber = process.env.TWILIO_PHONE_NUMBER
+        const TWO_WAY_FROM = process.env.TWILIO_PHONE_NUMBER || '+4552517040'
+        const from = twoWay ? TWO_WAY_FROM.replace(/\s/g, '') : 'SMARTREP'
 
         const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`
         const auth = Buffer.from(`${accountSid}:${authToken}`).toString('base64')
 
+        let phoneTo = String(to).replace(/\s/g, '')
+        if (!phoneTo.startsWith('+')) phoneTo = '+45' + phoneTo.replace(/^0+/, '')
+
         const formData = new URLSearchParams()
-        formData.append('To', to)
-        formData.append('From', 'SMARTREP')
+        formData.append('To', phoneTo)
+        formData.append('From', from)
         formData.append('Body', message)
 
         const twilioResponse = await fetch(twilioUrl, {
@@ -2648,19 +2663,19 @@ async function handleRoute(request, { params }) {
 
         const twilioData = await twilioResponse.json()
 
-        // Log the SMS
         await db.collection('communications').insertOne({
           id: uuidv4(),
           type: 'sms',
           taskId: taskId || null,
-          to: to,
+          to: phoneTo,
           message: message,
           status: twilioResponse.ok ? 'sent' : 'failed',
           twilioSid: twilioData.sid || null,
           error: twilioData.message || null,
           sentBy: user.id,
           sentByName: user.name,
-          createdAt: new Date()
+          createdAt: new Date(),
+          twoWay: !!twoWay
         })
 
         if (twilioResponse.ok) {
@@ -4276,14 +4291,16 @@ async function handleRoute(request, { params }) {
           { value: 'not_specified', label: 'Ikke specificeret' }
         ],
         taskTypes: [
-          { value: 'PLA', label: 'PLA (Plast)' },
+          { value: 'ALU', label: 'ALU (Aluprofil)' },
           { value: 'BUN', label: 'BUN (Bundstykke)' },
-          { value: 'GLA', label: 'GLA (Glas)' },
-          { value: 'ALU', label: 'ALU (Aluminium)' },
+          { value: 'PLA', label: 'PLA (Pladedør)' },
           { value: 'TRÆ', label: 'TRÆ (Træ)' },
+          { value: 'GLA', label: 'GLA (Glas)' },
+          { value: 'SPA', label: 'SPA (Sparkeplade)' },
           { value: 'COA', label: 'COA (Coating)' },
-          { value: 'INS', label: 'INS (Isolering)' },
-          { value: 'REN', label: 'REN (Rengøring)' }
+          { value: 'AFR', label: 'AFR (Afrensning)' },
+          { value: 'KEM', label: 'KEM (Kemisk afrensning)' },
+          { value: 'GEN', label: 'GEN (Gennemgang)' }
         ]
       }
 

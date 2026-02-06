@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { 
   Building2, Users, Plus, MoreHorizontal, Eye, Trash2, Phone, Mail, ChevronRight, ChevronDown,
   Loader2, Search, Pencil, UserPlus, UserCheck, Crown
@@ -32,7 +33,7 @@ export default function KundestyringView() {
   const [selectedCompanyId, setSelectedCompanyId] = useState(null)
   
   // Form states
-  const [companyForm, setCompanyForm] = useState({ name: '', address: '', postalCode: '', city: '', invoiceEmail: '', phone: '' })
+  const [companyForm, setCompanyForm] = useState({ name: '', address: '', postalCode: '', city: '', invoiceEmail: '', phone: '', rating: 'B' })
   const [contactForm, setContactForm] = useState({ name: '', email: '', phone: '', position: '', companyId: '', hasPortalAccess: false, isAdmin: false })
 
   useEffect(() => { loadData() }, [])
@@ -190,11 +191,12 @@ export default function KundestyringView() {
         postalCode: company.postalCode || '',
         city: company.city || '',
         invoiceEmail: company.invoiceEmail || '',
-        phone: company.phone || ''
+        phone: company.phone || '',
+        rating: ['A', 'B', 'C', 'D'].includes(company.rating) ? company.rating : 'B'
       })
     } else {
       setEditingCompany(null)
-      setCompanyForm({ name: '', address: '', postalCode: '', city: '', invoiceEmail: '', phone: '' })
+      setCompanyForm({ name: '', address: '', postalCode: '', city: '', invoiceEmail: '', phone: '', rating: 'B' })
     }
     setShowCompanyDialog(true)
   }
@@ -704,6 +706,19 @@ export default function KundestyringView() {
                 value={companyForm.phone} 
                 onChange={(e) => setCompanyForm(prev => ({ ...prev, phone: e.target.value }))}
               />
+            </div>
+            <div>
+              <Label>Rating (planlægning/ordrer)</Label>
+              <Select value={companyForm.rating || 'B'} onValueChange={(v) => setCompanyForm(prev => ({ ...prev, rating: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="A">A</SelectItem>
+                  <SelectItem value="B">B</SelectItem>
+                  <SelectItem value="C">C</SelectItem>
+                  <SelectItem value="D">D</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500 mt-1">Kun synlig for admin. Standard ved oprettelse: B.</p>
             </div>
           </div>
           <DialogFooter>

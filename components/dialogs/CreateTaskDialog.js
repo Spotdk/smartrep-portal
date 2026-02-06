@@ -270,6 +270,10 @@ const CreateTaskDialog = ({ open, onClose, options, companies, user, onCreated }
   }
 
   const handleSubmit = async () => {
+    if (user?.role !== 'customer' && (!formData.types || formData.types.length === 0)) {
+      alert('Vælg mindst én Type (tag)')
+      return
+    }
     setLoading(true)
     const payload = {
       ...formData,
@@ -482,14 +486,16 @@ const CreateTaskDialog = ({ open, onClose, options, companies, user, onCreated }
               <Label className="font-medium">Type (vælg én eller flere)</Label>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                 {(options?.taskTypes || [
-                  { value: 'PLA', label: 'PLA (Plast)' },
+                  { value: 'ALU', label: 'ALU (Aluprofil)' },
                   { value: 'BUN', label: 'BUN (Bundstykke)' },
-                  { value: 'GLA', label: 'GLA (Glas)' },
-                  { value: 'ALU', label: 'ALU (Aluminium)' },
+                  { value: 'PLA', label: 'PLA (Pladedør)' },
                   { value: 'TRÆ', label: 'TRÆ (Træ)' },
+                  { value: 'GLA', label: 'GLA (Glas)' },
+                  { value: 'SPA', label: 'SPA (Sparkeplade)' },
                   { value: 'COA', label: 'COA (Coating)' },
-                  { value: 'INS', label: 'INS (Isolering)' },
-                  { value: 'REN', label: 'REN (Rengøring)' }
+                  { value: 'AFR', label: 'AFR (Afrensning)' },
+                  { value: 'KEM', label: 'KEM (Kemisk afrensning)' },
+                  { value: 'GEN', label: 'GEN (Gennemgang)' }
                 ]).map(type => {
                   const selected = (formData.types || []).includes(type.value)
                   return (

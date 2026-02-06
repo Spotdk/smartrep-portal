@@ -413,6 +413,23 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
     }
   }
 
+  // Hurtig opdatering af Type, Kategori, ET, Vejr uden Rediger-knap
+  const handleQuickUpdate = async (field, value) => {
+    if (!task?.id || updating) return
+    setUpdating(true)
+    try {
+      await api.put(`/tasks/${task.id}`, { [field]: value })
+      setStatusPopup('Opdateret')
+      setTimeout(() => setStatusPopup(null), 2000)
+      onUpdate()
+    } catch (err) {
+      console.error(err)
+      alert('Fejl ved opdatering')
+    } finally {
+      setUpdating(false)
+    }
+  }
+
   // Google Maps embed URL
   const taskAddrStr = taskAddressString(task)
   const mapUrl = taskAddrStr ? `https://www.google.com/maps/embed/v1/place?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}&q=${encodeURIComponent([taskAddrStr, task?.postalCode, task?.city, 'Denmark'].filter(Boolean).join(', '))}&zoom=15` : null
@@ -602,8 +619,12 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
               </div>
               <div className="p-3 bg-gray-50 rounded-lg text-center">
                 <Label className="text-gray-500 text-xs">Kategori</Label>
-                {isEditing ? (
-                  <Select value={editData.category} onValueChange={(v) => setEditData(prev => ({ ...prev, category: v }))}>
+                {(isEditing || user?.role === 'admin') ? (
+                  <Select
+                    value={isEditing ? editData.category : (task.category || 'service')}
+                    onValueChange={(v) => isEditing ? setEditData(prev => ({ ...prev, category: v })) : handleQuickUpdate('category', v)}
+                    disabled={updating}
+                  >
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="foraflevering">Foraflevering</SelectItem>
@@ -617,21 +638,29 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
               </div>
               <div className="p-3 bg-gray-50 rounded-lg text-center">
                 <Label className="text-gray-500 text-xs">Est. tid</Label>
-                {isEditing ? (
-                  <Select value={editData.estimatedTime?.toString()} onValueChange={(v) => setEditData(prev => ({ ...prev, estimatedTime: parseInt(v) }))}>
+                {(isEditing || user?.role === 'admin') ? (
+                  <Select
+                    value={isEditing ? editData.estimatedTime?.toString() : (task.estimatedTime ?? 2).toString()}
+                    onValueChange={(v) => isEditing ? setEditData(prev => ({ ...prev, estimatedTime: parseInt(v) })) : handleQuickUpdate('estimatedTime', parseInt(v))}
+                    disabled={updating}
+                  >
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {[1,2,3,4,5,6,7,8].map(n => <SelectItem key={n} value={n.toString()}>{n} timer</SelectItem>)}
                     </SelectContent>
                   </Select>
                 ) : (
-                  <p className="font-medium">{task.estimatedTime || 2} timer</p>
+                  <p className="font-medium">{task.estimatedTime ?? 2} timer</p>
                 )}
               </div>
               <div className="p-3 bg-gray-50 rounded-lg text-center">
                 <Label className="text-gray-500 text-xs">Vejr</Label>
-                {isEditing ? (
-                  <Select value={editData.weatherType} onValueChange={(v) => setEditData(prev => ({ ...prev, weatherType: v }))}>
+                {(isEditing || user?.role === 'admin') ? (
+                  <Select
+                    value={isEditing ? editData.weatherType : (task.weatherType || 'sun')}
+                    onValueChange={(v) => isEditing ? setEditData(prev => ({ ...prev, weatherType: v })) : handleQuickUpdate('weatherType', v)}
+                    disabled={updating}
+                  >
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="sun">Tørvejr</SelectItem>
@@ -1029,21 +1058,12 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
               )}
             </div>
             
-            {/* Type – flere tags, ingen begrænsning (checkboxes) */}
+            {/* Type – opgavevisning: kun tags (PLA, BUN …); redigering: tag + beskrivelse; altid redigerbart for admin uden Rediger */}
             <div className="p-3 bg-gray-50 rounded-lg">
               <Label className="text-gray-500 text-xs">Type (vælg én eller flere)</Label>
               {isEditing ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
-                  {(options?.taskTypes || [
-                    { value: 'PLA', label: 'PLA (Plast)' },
-                    { value: 'BUN', label: 'BUN (Bundstykke)' },
-                    { value: 'GLA', label: 'GLA (Glas)' },
-                    { value: 'ALU', label: 'ALU (Aluminium)' },
-                    { value: 'TRÆ', label: 'TRÆ (Træ)' },
-                    { value: 'COA', label: 'COA (Coating)' },
-                    { value: 'INS', label: 'INS (Isolering)' },
-                    { value: 'REN', label: 'REN (Rengøring)' }
-                  ]).map(type => {
+                  {(options?.taskTypes || []).map(type => {
                     const selected = (editData.types || []).includes(type.value)
                     return (
                       <div key={type.value} className="flex items-center gap-2">
@@ -1064,6 +1084,28 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
                         />
                         <Label htmlFor={`edit_type_${type.value}`} className="cursor-pointer text-sm">{type.label || type.value}</Label>
                       </div>
+                    )
+                  })}
+                </div>
+              ) : user?.role === 'admin' ? (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {(options?.taskTypes || []).map(type => {
+                    const currentTypes = task.types && task.types.length ? task.types : (task.taskType ? [task.taskType] : [])
+                    const selected = currentTypes.includes(type.value)
+                    return (
+                      <label key={type.value} className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={!!selected}
+                          disabled={updating}
+                          onChange={() => {
+                            const next = selected ? currentTypes.filter(t => t !== type.value) : [...currentTypes, type.value]
+                            handleQuickUpdate('types', next)
+                          }}
+                          className="w-4 h-4 rounded border-gray-300 text-blue-600"
+                        />
+                        <span className="text-sm font-medium" style={{ color: BRAND_BLUE }}>{type.value}</span>
+                      </label>
                     )
                   })}
                 </div>

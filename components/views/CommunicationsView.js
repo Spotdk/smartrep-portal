@@ -14,6 +14,17 @@ import { format } from 'date-fns'
 import { da } from 'date-fns/locale'
 import { api, BRAND_BLUE } from '@/lib/constants'
 import { PhoneInput } from '@/components/ui/phone-input'
+import { Switch } from '@/components/ui/switch'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 const DEFAULT_EMAIL_TEMPLATE = `<!DOCTYPE html>
 <html><body style="font-family: Arial, sans-serif;">
@@ -44,6 +55,8 @@ export default function CommunicationsView() {
   const [activeTab, setActiveTab] = useState('sms')
   const [loading, setLoading] = useState(false)
   const [smsForm, setSmsForm] = useState({ to: '', message: '' })
+  const [twoWaySms, setTwoWaySms] = useState(false)
+  const [showTwoWayConfirm, setShowTwoWayConfirm] = useState(false)
   const [emailForm, setEmailForm] = useState({ to: '', subject: '', html: '' })
   const [history, setHistory] = useState([])
   const [emailStatus, setEmailStatus] = useState(null)
@@ -75,15 +88,30 @@ export default function CommunicationsView() {
     api.get('/users').then(users => setContacts(users.filter(u => u.role === 'customer'))).catch(console.error)
   }, [])
 
-  const sendSMS = async () => {
+  const doSendSMS = async (useTwoWay = false) => {
     setLoading(true)
     try {
-      await api.post('/sms/send', smsForm)
+      await api.post('/sms/send', { ...smsForm, twoWay: useTwoWay })
       setSmsForm({ to: '', message: '' })
       api.get('/communications').then(setHistory)
       alert('SMS sendt!')
     } catch (err) { alert('Fejl: ' + err.message) }
-    finally { setLoading(false) }
+    finally {
+      setLoading(false)
+      setShowTwoWayConfirm(false)
+    }
+  }
+
+  const sendSMS = () => {
+    if (!smsForm.to || !smsForm.message?.trim()) {
+      alert('Udfyld telefonnummer og besked')
+      return
+    }
+    if (twoWaySms) {
+      setShowTwoWayConfirm(true)
+      return
+    }
+    doSendSMS(false)
   }
 
   const sendEmail = async () => {
@@ -238,6 +266,12 @@ export default function CommunicationsView() {
                       onChange={(e) => setSmsForm(prev => ({ ...prev, to: e.target.value }))}
                     />
                   </div>
+                  <div className="flex items-center gap-2">
+                    <Switch id="twoWay-portal" checked={twoWaySms} onCheckedChange={setTwoWaySms} />
+                    <Label htmlFor="twoWay-portal" className="text-sm cursor-pointer">
+                      Aktivér 2-vejs (besked sendes fra 52517040, modtager kan besvare)
+                    </Label>
+                  </div>
                   <div>
                     <Label>Besked</Label>
                     <Textarea
@@ -259,6 +293,18 @@ export default function CommunicationsView() {
                     {loading && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
                     <Send className="w-4 h-4 mr-2" />Send SMS
                   </Button>
+                  <AlertDialog open={showTwoWayConfirm} onOpenChange={setShowTwoWayConfirm}>
+                    <AlertDialogContent>
+                      <AlertDialogTitle>2-vejs SMS</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Beskeden sendes fra 52517040. Modtager kan besvare. Alle SMS i denne tråd kører som 2-vejs kommunikation.
+                      </AlertDialogDescription>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Annuller</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => doSendSMS(true)}>OK</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </>
               ) : (
                 <>
