@@ -60,6 +60,52 @@ function getColorLabel(value, options) {
   return col?.label || value || '-'
 }
 
+// Helper: Build photos for WorkOrderTemplate (images + damage FØR/EFTER/AFSTAND)
+function buildPhotosForWorkOrder(task, options, getBuildingPartLabel) {
+  const list = []
+  const fromFiles = (task.images || task.files?.filter(f => f.type === 'image') || []).map(img => ({
+    url: img.url || img,
+    caption: img.name || ''
+  }))
+  list.push(...fromFiles)
+  const damages = task.damages || []
+  damages.forEach((d, i) => {
+    const prefix = getBuildingPartLabel ? getBuildingPartLabel(d.part, options) : (d.part || `Skade ${i + 1}`)
+    if (d.photoBefore) list.push({ url: d.photoBefore, caption: `${prefix} – FØR` })
+    if (d.photoAfter) list.push({ url: d.photoAfter, caption: `${prefix} – EFTER` })
+    if (d.photoDistance) list.push({ url: d.photoDistance, caption: `${prefix} – AFSTAND` })
+  })
+  return list
+}
+
+// Helper: Build damages for WorkOrderTemplate with section support
+function buildDamagesForWorkOrder(task, options, getBuildingPartLabel, getColorLabel, getLocationLabel) {
+  const sections = task.damageSections?.length
+    ? task.damageSections.filter(s => s.includeOnPrint !== false)
+    : [{ id: 'main', name: 'Skader', includeOnPrint: true }]
+  const damages = task.damages || []
+  const result = []
+  let number = 1
+  for (const section of sections) {
+    const sectionDamages = damages.filter(d => (d.sectionId || 'main') === section.id)
+    const baseName = section.name.replace(/\s*skader\s*$/i, '').trim()
+    const prefix = baseName ? baseName + ' ' : ''
+    for (const d of sectionDamages) {
+      result.push({
+        number,
+        sectionName: prefix || undefined,
+        buildingPart: getBuildingPartLabel(d.part, options),
+        quantity: `${d.quantity || 1} stk`,
+        color: getColorLabel(d.color, options),
+        location: getLocationLabel(d.location, options),
+        notes: d.notes || ''
+      })
+      number++
+    }
+  }
+  return result
+}
+
 export default function ArbejdskortPage() {
   const params = useParams()
   const taskId = params.taskId
@@ -108,18 +154,8 @@ export default function ArbejdskortPage() {
         taskType: task.taskType || '',
         categoryTypes: task.taskType ? [task.taskType] : [],
         weather: mapWeather(task.weatherType),
-        damages: (task.damages || []).map((d, idx) => ({
-          number: idx + 1,
-          buildingPart: getBuildingPartLabel(d.part, options),
-          quantity: `${d.quantity || 1} stk`,
-          color: getColorLabel(d.color, options),
-          location: getLocationLabel(d.location, options),
-          notes: d.notes || ''
-        })),
-        photos: (task.images || task.files?.filter(f => f.type === 'image') || []).map(img => ({
-          url: img.url || img,
-          caption: img.name || ''
-        })),
+        damages: buildDamagesForWorkOrder(task, options, getBuildingPartLabel, getColorLabel, getLocationLabel),
+        photos: buildPhotosForWorkOrder(task, options, getBuildingPartLabel),
         totalPages: 2,
         currentPage: 1
       }

@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { 
-  Plus, Navigation, Eye, Printer, Loader2, ClipboardList, X, MapPin, User, Phone
+  Plus, Navigation, Eye, Printer, Loader2, ClipboardList, X, MapPin, User, Phone, Camera, CheckCircle
 } from 'lucide-react'
 import { api, BRAND_BLUE, STATUS_CONFIG } from '@/lib/constants'
 import { taskAddressString } from '@/lib/utils'
@@ -32,6 +32,9 @@ export default function TechnicianTasksView({ user }) {
   const [sortByNearest, setSortByNearest] = useState(false)
   const [userLocation, setUserLocation] = useState(null)
   const [gettingLocation, setGettingLocation] = useState(false)
+  const [uploadingPhoto, setUploadingPhoto] = useState(null)
+  const [savingTask, setSavingTask] = useState(false)
+  const fileInputRef = useRef(null)
 
   // Status tabs for technician (read-only, no status change)
   const technicianTabs = [
@@ -97,6 +100,55 @@ export default function TechnicianTasksView({ user }) {
     const dist = calculateDistance(userLocation, task)
     if (dist === Infinity) return null
     return dist < 1 ? `${Math.round(dist * 1000)} m` : `${dist.toFixed(1)} km`
+  }
+
+  const handlePhotoUpload = async (damageIdx, field, e) => {
+    const file = e.target.files?.[0]
+    if (!file || !selectedTask) return
+    setUploadingPhoto({ damageIdx, field })
+    try {
+      const token = localStorage.getItem('smartrep_token')
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('photoType', 'damage')
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Upload fejlede')
+      const url = data?.file?.url || null
+      if (url) {
+        const damages = (selectedTask.damages || []).map((d, i) =>
+          i === damageIdx ? { ...d, id: d.id || `d-${i}`, [field]: url } : d
+        )
+        setSavingTask(true)
+        await api.put(`/tasks/${selectedTask.id}`, { damages })
+        const fresh = await api.get(`/tasks/${selectedTask.id}`)
+        setSelectedTask(fresh)
+        fetchTasks()
+      }
+    } catch (err) {
+      alert('Upload fejl: ' + (err?.message || 'Kunne ikke uploade'))
+    } finally {
+      setUploadingPhoto(null)
+      setSavingTask(false)
+      e.target.value = ''
+    }
+  }
+
+  const triggerPhotoInput = (damageIdx, field) => {
+    if (uploadingPhoto || savingTask) return
+    fileInputRef.current?.setAttribute('data-damage-idx', damageIdx)
+    fileInputRef.current?.setAttribute('data-field', field)
+    fileInputRef.current?.click()
+  }
+
+  const onFileInputChange = (e) => {
+    const idx = parseInt(fileInputRef.current?.getAttribute('data-damage-idx') ?? '-1', 10)
+    const field = fileInputRef.current?.getAttribute('data-field') || 'photoBefore'
+    if (idx >= 0 && field) handlePhotoUpload(idx, field, e)
   }
 
   const getCurrentLocation = () => {
@@ -418,18 +470,74 @@ export default function TechnicianTasksView({ user }) {
                 </div>
                 {selectedTask.damages?.length > 0 && (
                   <div>
-                    <Label className="text-xs text-gray-500">Skader ({selectedTask.damages.length})</Label>
-                    <div className="space-y-2 mt-2">
-                      {selectedTask.damages.map((d, idx) => (
-                        <div key={idx} className="p-3 bg-gray-50 rounded-lg">
-                          <p className="font-medium">{options?.buildingParts?.find(p => p.value === d.part)?.label || d.part}</p>
-                          <div className="flex gap-4 text-sm text-gray-500 mt-1">
-                            <span>Antal: {d.quantity}</span>
-                            {d.location && <span>Placering: {options?.locations?.find(l => l.value === d.location)?.label || d.location}</span>}
+                    <Label className="text-xs text-gray-500">Skader ({selectedTask.damages.length}) – FØR/EFTER/AFSTAND</Label>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      onChange={onFileInputChange}
+                    />
+                    <div className="space-y-4 mt-2">
+                      {selectedTask.damages.map((d, idx) => {
+                        const hasFor = !!d.photoBefore
+                        const hasEfter = !!d.photoAfter
+                        const hasAfstand = !!d.photoDistance
+                        const allFilled = hasFor && hasEfter && hasAfstand
+                        const hasForEfter = hasFor && hasEfter
+                        return (
+                          <div key={d.id || idx} className="p-3 border-2 border-gray-200 rounded-lg space-y-3">
+                            <div>
+                              <p className="font-medium">Skade #{idx + 1}: {options?.buildingParts?.find(p => p.value === d.part)?.label || d.part}</p>
+                              <div className="flex gap-4 text-sm text-gray-500 mt-1">
+                                <span>Antal: {d.quantity || 1}</span>
+                                {d.location && <span>Placering: {options?.locations?.find(l => l.value === d.location)?.label || d.location}</span>}
+                              </div>
+                              {d.notes && <p className="text-sm text-gray-600 mt-1">{d.notes}</p>}
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              {['photoBefore', 'photoAfter', 'photoDistance'].map((field, i) => {
+                                const labels = ['FØR', 'EFTER', 'AFSTAND']
+                                const url = d[field]
+                                const isUploading = uploadingPhoto?.damageIdx === idx && uploadingPhoto?.field === field
+                                return (
+                                  <div key={field} className="flex flex-col items-center">
+                                    <p className="text-xs font-medium text-gray-600 mb-1">{labels[i]}</p>
+                                    <button
+                                      type="button"
+                                      onClick={() => triggerPhotoInput(idx, field)}
+                                      disabled={!!uploadingPhoto || savingTask}
+                                      className="w-full aspect-square border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center overflow-hidden bg-gray-50 hover:border-blue-400 hover:bg-blue-50/30 transition-colors disabled:opacity-50"
+                                    >
+                                      {url ? (
+                                        <img src={url} alt={labels[i]} className="w-full h-full object-cover" />
+                                      ) : isUploading ? (
+                                        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                                      ) : (
+                                        <div className="text-center p-2">
+                                          <Camera className="w-8 h-8 mx-auto text-gray-400 mb-1" />
+                                          <span className="text-xs text-gray-500">📷 Klik for foto</span>
+                                        </div>
+                                      )}
+                                    </button>
+                                    {!url && <span className="text-xs text-amber-600 mt-0.5">Påkrævet</span>}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                            {allFilled && (
+                              <div className="flex items-center gap-2 text-green-700 text-sm">
+                                <CheckCircle className="w-4 h-4" />
+                                Alle fotos udfyldt
+                              </div>
+                            )}
+                            {hasForEfter && !allFilled && (
+                              <p className="text-xs text-gray-500">FØR + EFTER udfyldt – afstandsfoto mangler</p>
+                            )}
                           </div>
-                          {d.notes && <p className="text-sm text-gray-600 mt-1">{d.notes}</p>}
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 )}

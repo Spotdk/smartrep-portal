@@ -23,7 +23,10 @@ export default function ViewPhotoReportDialog({ report, task, open, onClose, use
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Fotorapport – {addr || 'Ingen adresse'}</DialogTitle>
+          <DialogTitle>
+            {report.reportNumber ? `Foto rapport #${report.reportNumber} – ` : 'Fotorapport – '}
+            {addr || 'Ingen adresse'}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -38,6 +41,10 @@ export default function ViewPhotoReportDialog({ report, task, open, onClose, use
                 <div>
                   <p className="text-gray-500">Kontakt</p>
                   <p className="font-medium">{report.contactName || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Udført af</p>
+                  <p className="font-medium">{report.createdByName || '-'}</p>
                 </div>
                 <div>
                   <p className="text-gray-500">Oprettet</p>
@@ -98,7 +105,7 @@ export default function ViewPhotoReportDialog({ report, task, open, onClose, use
                         <span className="w-6 h-6 rounded-full text-white text-xs flex items-center justify-center" style={{ backgroundColor: BRAND_BLUE }}>
                           {idx + 1}
                         </span>
-                        {damage.item || 'Skade'}
+                        Skade #{idx + 1}
                         {damage.location && <span className="text-gray-500 font-normal">– {damage.location}</span>}
                       </CardTitle>
                       {damage.status === 'approved' && (
@@ -115,8 +122,8 @@ export default function ViewPhotoReportDialog({ report, task, open, onClose, use
                   <CardContent className="p-4 space-y-3">
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
-                        <p className="text-gray-500">Type</p>
-                        <p className="font-medium">{damage.type || '-'}</p>
+                        <p className="text-gray-500">Bygningsdel</p>
+                        <p className="font-medium">{damage.item || damage.type || '-'}</p>
                       </div>
                       <div>
                         <p className="text-gray-500">Placering</p>
@@ -168,10 +175,22 @@ export default function ViewPhotoReportDialog({ report, task, open, onClose, use
                 className="inline-flex items-center gap-1 text-blue-600 hover:underline"
               >
                 <ExternalLink className="w-4 h-4" />
-                Åbn kundens gennemsynslink
+                URL til Gennemgang
               </a>
             </div>
           )}
+
+          {/* Footer */}
+          <div className="border-t border-gray-200 pt-4 mt-4 space-y-3">
+            <p className="text-sm text-center text-gray-600">
+              Spørgsmål? Kontakt os på 82 82 25 72 eller info@smartrep.nu
+            </p>
+            <p className="text-xs text-center text-gray-500">SMARTREP · CVR 25808436</p>
+            <div className="bg-gray-900 text-gray-300 rounded-lg px-4 py-3 text-center">
+              <p className="text-xs font-medium mb-1">ØVRIGE BRANDS UNDER SMARTREP</p>
+              <p className="text-sm">Alupleje · COLOR:UP · Coating.dk</p>
+            </div>
+          </div>
         </div>
 
         <DialogFooter>

@@ -42,6 +42,8 @@ export default function NyFotorapportPage() {
   const [tasks, setTasks] = useState([])
   const [companies, setCompanies] = useState([])
   const [contacts, setContacts] = useState([]) // All contacts from API
+  const [portalUsers, setPortalUsers] = useState([]) // Admin/tekniker til "Udført af"
+  const [performedByUserId, setPerformedByUserId] = useState('') // Valgt bruger (tom = current)
   const [options, setOptions] = useState({ buildingParts: [] })
   const [taskSearchQuery, setTaskSearchQuery] = useState('')
   const [addressSuggestions, setAddressSuggestions] = useState([])
@@ -104,6 +106,7 @@ export default function NyFotorapportPage() {
       setTasks(tasksData)
       setCompanies(companiesData || [])
       setContacts(usersData.filter(u => u.role === 'customer') || [])
+      setPortalUsers(usersData.filter(u => u.role !== 'customer') || [])
       setOptions(optionsData || { buildingParts: [] })
     } catch (err) {
       console.error('Load error:', err)
@@ -291,10 +294,11 @@ export default function NyFotorapportPage() {
         address: addressInfo.address,
         postalCode: addressInfo.postalCode,
         city: addressInfo.city,
+        performedByUserId: performedByUserId || undefined,
         damages: damages.map(d => ({
           id: d.id.toString(),
           item: options?.buildingParts?.find(p => p.value === d.buildingPart)?.label || d.buildingPart,
-          type: d.description || d.buildingPart,
+          type: options?.buildingParts?.find(p => p.value === d.buildingPart)?.label || d.buildingPart,
           location: d.location,
           notes: d.description,
           closeupPhoto: d.closeupPhoto,
@@ -465,8 +469,26 @@ export default function NyFotorapportPage() {
                   <Label>Sagsnr.</Label>
                   <Input value={caseNumber} onChange={(e) => setCaseNumber(e.target.value)} placeholder="Fx FY-2026-601" />
                 </div>
+                {user?.role === 'admin' && portalUsers.length > 0 && (
+                  <div>
+                    <Label>Udført af</Label>
+                    <Select value={performedByUserId || user?.id} onValueChange={setPerformedByUserId}>
+                      <SelectTrigger><SelectValue placeholder="Vælg bruger" /></SelectTrigger>
+                      <SelectContent>
+                        {portalUsers.map(u => (
+                          <SelectItem key={u.id} value={u.id}>{u.name} {u.role === 'technician' ? '(Tekniker)' : ''}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                {user?.role === 'technician' && (
+                  <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-600">
+                    Udført af: {user?.name || '–'} (automatisk)
+                  </div>
+                )}
                 <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-600">
-                  Oprettet: {format(new Date(), 'dd/MM/yyyy HH:mm', { locale: da })} · Af {user?.name || '–'}
+                  Oprettet: {format(new Date(), 'dd/MM/yyyy HH:mm', { locale: da })}
                 </div>
               </div>
             </CardContent>
@@ -627,8 +649,26 @@ export default function NyFotorapportPage() {
                   <Label className="text-sm">Sagsnr.</Label>
                   <Input value={caseNumber || selectedTask?.taskNumber || ''} onChange={(e) => setCaseNumber(e.target.value)} placeholder="Fx FY-2026-601" />
                 </div>
+                {user?.role === 'admin' && portalUsers.length > 0 && (
+                  <div>
+                    <Label>Udført af</Label>
+                    <Select value={performedByUserId || user?.id} onValueChange={setPerformedByUserId}>
+                      <SelectTrigger><SelectValue placeholder="Vælg bruger" /></SelectTrigger>
+                      <SelectContent>
+                        {portalUsers.map(u => (
+                          <SelectItem key={u.id} value={u.id}>{u.name} {u.role === 'technician' ? '(Tekniker)' : ''}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                {user?.role === 'technician' && (
+                  <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-600">
+                    Udført af: {user?.name || '–'} (automatisk)
+                  </div>
+                )}
                 <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-600">
-                  Oprettet: {format(new Date(), 'dd/MM/yyyy HH:mm', { locale: da })} · Af {user?.name || '–'}
+                  Oprettet: {format(new Date(), 'dd/MM/yyyy HH:mm', { locale: da })}
                 </div>
               </div>
             </CardContent>

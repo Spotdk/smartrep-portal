@@ -270,7 +270,12 @@ const CreateTaskDialog = ({ open, onClose, options, companies, user, onCreated }
 
   const handleSubmit = async () => {
     setLoading(true)
-    try { await api.post('/tasks', formData); onCreated() }
+    const payload = {
+      ...formData,
+      damageSections: [{ id: 'main', name: 'Skader', includeOnPrint: true }],
+      damages: (formData.damages || []).map(d => ({ ...d, sectionId: d.sectionId || 'main' }))
+    }
+    try { await api.post('/tasks', payload); onCreated() }
     catch (err) { console.error(err) }
     finally { setLoading(false) }
   }

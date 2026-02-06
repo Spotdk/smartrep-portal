@@ -195,8 +195,8 @@ async function fetchDmiDailyWeather(lat, lon, startDate, endDate) {
   }
 }
 
-// Forecast EDR API – prognoser for kommende dage (~54 t frem). Cache 3 timer (DMI opdaterer ca. hver 6. time).
-const DMI_FORECAST_EDR_BASE = 'https://opendataapi.dmi.dk/v1/forecastedr/collections/harmonie_dini_sf/position'
+// Open-Meteo API – prognoser 16 dage (DMI Forecast EDR giver kun ~54t). Cache 3 timer.
+const OPEN_METEO_FORECAST = 'https://api.open-meteo.com/v1/forecast'
 const FORECAST_CACHE_TTL_MS = 3 * 60 * 60 * 1000
 const forecastCache = new Map()
 
@@ -204,33 +204,67 @@ function forecastCacheKey(lat, lon) {
   return `${Number(lat).toFixed(2)}:${Number(lon).toFixed(2)}`
 }
 
-/** Hent prognosedata fra Forecast EDR API (time-for-time). Returnerer features-array eller []. */
-async function fetchForecastEdr(lat, lon) {
+/** Hent prognosedata fra Open-Meteo API (16 dage). Returnerer array af daglige objekter. */
+async function fetchOpenMeteoForecast(lat, lon) {
   const key = forecastCacheKey(lat, lon)
   const cached = forecastCache.get(key)
-  if (cached && cached.expires > Date.now()) return cached.features || []
-  const coords = `POINT(${Number(lon)} ${Number(lat)})`
+  if (cached && cached.expires > Date.now()) return cached.days || []
   const params = new URLSearchParams({
-    coords,
-    'parameter-name': 'temperature-2m,wind-speed-10m,wind-dir-10m,precipitation,relative-humidity',
-    crs: 'crs84',
-    f: 'GeoJSON'
+    latitude: String(lat),
+    longitude: String(lon),
+    daily: 'temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,relative_humidity_2m_mean',
+    timezone: 'Europe/Copenhagen',
+    forecast_days: '14'
   })
-  const url = `${DMI_FORECAST_EDR_BASE}?${params.toString()}`
+  const url = `${OPEN_METEO_FORECAST}?${params.toString()}`
   try {
-    const res = await fetch(url, { headers: { Accept: 'application/geo+json' } })
+    const res = await fetch(url, { headers: { Accept: 'application/json' } })
     if (!res.ok) return []
     const data = await res.json()
-    const features = data.features || []
-    forecastCache.set(key, { features, expires: Date.now() + FORECAST_CACHE_TTL_MS })
-    return features
+    const daily = data.daily || {}
+    const times = daily.time || []
+    const days = times.map((dateStr, i) => {
+      const tempMax = daily.temperature_2m_max?.[i]
+      const tempMin = daily.temperature_2m_min?.[i]
+      const temp_avg = (tempMax != null && tempMin != null) ? (tempMax + tempMin) / 2 : (tempMax ?? tempMin ?? null)
+      const precipitation_mm = daily.precipitation_sum?.[i] ?? 0
+      const wind_max = daily.wind_speed_10m_max?.[i] ?? null
+      const humidity_avg = daily.relative_humidity_2m_mean?.[i] != null ? Math.round(daily.relative_humidity_2m_mean[i]) : null
+      const classified = classifyDayForApi({
+        temp_avg: temp_avg ?? 10,
+        wind_max: wind_max ?? 0,
+        precipitation_mm,
+        humidity_avg: humidity_avg ?? 70
+      })
+      const tempVal = temp_avg ?? 10
+      const dayNames = ['Søndag', 'Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lørdag']
+      return {
+        date: dateStr,
+        day_name: dayNames[new Date(dateStr + 'T12:00:00').getDay()],
+        temp_avg: temp_avg != null ? Math.round(temp_avg * 10) / 10 : null,
+        temp_min: tempMin != null ? Math.round(tempMin * 10) / 10 : null,
+        temp_max: tempMax != null ? Math.round(tempMax * 10) / 10 : null,
+        wind_avg: wind_max != null ? Math.round(wind_max * 10) / 10 : null,
+        wind_max: wind_max != null ? Math.round(wind_max * 10) / 10 : null,
+        wind_gust: wind_max != null ? Math.round((wind_max * 1.2) * 10) / 10 : null,
+        precipitation_mm: Math.round(precipitation_mm * 10) / 10,
+        humidity_avg: humidity_avg ?? null,
+        weather_icon: iconFromData(tempVal, precipitation_mm, wind_max),
+        weather_desc: descFromData(tempVal, precipitation_mm, wind_max),
+        status: classified.status,
+        status_reason: classified.reason,
+        data_source: 'forecast'
+      }
+    })
+    forecastCache.set(key, { days, expires: Date.now() + FORECAST_CACHE_TTL_MS })
+    return days
   } catch (err) {
-    console.error('DMI Forecast EDR fetch error:', err)
+    console.error('Open-Meteo fetch error:', err)
     return []
   }
 }
 
-/** Aggregér EDR time-data til daglige værdier (samme format som Climate Data-dage). */
+/** Legacy: aggregér EDR time-data (kun brugt hvis Open-Meteo fejler). */
 function aggregateForecastToDaily(features) {
   const byDate = {}
   for (const f of features) {
@@ -309,7 +343,7 @@ function getDailyWeatherUnavailable(dateStr, isFuture) {
     weather_icon: '❓',
     weather_desc: isFuture ? 'Prognose ikke tilgængelig' : 'Data ikke tilgængelig',
     status: 'UNKNOWN',
-    status_reason: isFuture ? 'Prognose ikke tilgængelig (DMI har kun historik)' : 'Historisk data ikke tilgængelig for denne dag'
+    status_reason: isFuture ? 'Prognose ikke tilgængelig' : 'Historisk data ikke tilgængelig for denne dag'
   }
 }
 
@@ -1391,7 +1425,8 @@ async function handleRoute(request, { params }) {
         deadline: body.deadline || null,
         deadlineLocked: body.deadlineLocked || false,
         taskType: (Array.isArray(body.types) && body.types.length) ? body.types[0] : (body.taskType || 'ALU'),
-        damages: body.damages || [],
+        damages: (body.damages || []).map(d => ({ ...d, sectionId: d.sectionId || 'main' })),
+        damageSections: body.damageSections?.length ? body.damageSections : [{ id: 'main', name: 'Skader', includeOnPrint: true }],
         types: Array.isArray(body.types) ? body.types : (body.taskType ? [body.taskType] : []),
         taskSummary: body.taskSummary || '',
         notes: body.notes || '',
@@ -1676,15 +1711,20 @@ async function handleRoute(request, { params }) {
 
       const reports = await db.collection('photo_reports').find(query).sort({ createdAt: -1 }).toArray()
       
-      // Enrich with task info
+      // Enrich with task info + address (fra report hvis task mangler)
       const enrichedReports = await Promise.all(reports.map(async (report) => {
         const task = await db.collection('tasks').findOne({ id: report.taskId })
         const { _id, ...rest } = report
+        const taskAddress = task?.address
+        const addressDisplay = taskAddress || (report.address || report.postalCode || report.city
+          ? [report.address, report.postalCode, report.city].filter(Boolean).join(', ')
+          : null) || 'Ingen adresse'
         return {
           ...rest,
           taskNumber: task?.taskNumber,
-          taskAddress: task?.address,
-          taskCity: task?.city,
+          taskAddress: taskAddress ?? report.address,
+          addressDisplay,
+          taskCity: task?.city || report.city,
           companyName: task?.companyName
         }
       }))
@@ -1711,11 +1751,26 @@ async function handleRoute(request, { params }) {
         return handleCORS(NextResponse.json({ error: 'Ved ny rapport uden opgave: kunde, kontakt og adresse er påkrævet' }, { status: 400 }))
       }
       
+      // Fortløbende rapportnummer (start 1331)
+      const lastReport = await db.collection('photo_reports').findOne({}, { sort: { reportNumber: -1 } })
+      const reportNumber = (lastReport?.reportNumber ?? 1330) + 1
+
       // Generate unique review token (bruges når rapporten sendes)
       const reviewToken = uuidv4()
       
+      let createdBy = user.id
+      let createdByName = user.name
+      if (body.performedByUserId) {
+        const performer = await db.collection('users').findOne({ id: body.performedByUserId })
+        if (performer) {
+          createdBy = performer.id
+          createdByName = performer.name
+        }
+      }
+
       const report = {
         id: uuidv4(),
+        reportNumber,
         taskId: body.taskId || null,
         caseNumber: body.caseNumber || (task ? task.taskNumber : null),
         companyId: body.companyId || task?.companyId || null,
@@ -1752,8 +1807,8 @@ async function handleRoute(request, { params }) {
         reviewerName: null,
         reviewerSignature: null,
         // Meta
-        createdBy: user.id,
-        createdByName: user.name,
+        createdBy,
+        createdByName,
         createdAt: new Date(),
         updatedAt: new Date()
       }
@@ -2020,6 +2075,7 @@ async function handleRoute(request, { params }) {
       if (token === 'demo') {
         const demoReport = {
           id: 'demo',
+          reportNumber: 1331,
           taskId: 'demo',
           reviewToken: 'demo',
           status: 'pending',
@@ -2341,12 +2397,11 @@ async function handleRoute(request, { params }) {
       const rangeEnd = end.toISOString().slice(0, 10)
       const todayStr = new Date().toISOString().slice(0, 10)
       const hasFutureDates = dateList.some((d) => d > todayStr)
-      const [dmiDays, forecastFeatures] = await Promise.all([
+      const [dmiDays, forecastDays] = await Promise.all([
         fetchDmiDailyWeather(lat, lon, rangeStart, rangeEnd),
-        hasFutureDates ? fetchForecastEdr(lat, lon) : Promise.resolve([])
+        hasFutureDates ? fetchOpenMeteoForecast(lat, lon) : Promise.resolve([])
       ])
       const dmiByDate = Object.fromEntries((dmiDays || []).map((day) => [day.date, day]))
-      const forecastDays = aggregateForecastToDaily(forecastFeatures || [])
       const forecastByDate = Object.fromEntries((forecastDays || []).map((day) => [day.date, day]))
       const days = dateList.map((dateStr) => {
         const fromDmi = dmiByDate[dateStr]

@@ -77,7 +77,7 @@ export default function WorkOrderTemplate({ data, logoUrl }) {
               )}
               
               <QRCodeSVG 
-                value={`${process.env.NEXT_PUBLIC_BASE_URL || 'https://smartrep.nu'}/tekniker/opgave/${data?.taskId || taskNumber}`}
+                value={`${process.env.NEXT_PUBLIC_BASE_URL || 'https://smartrep.nu'}/arbejdskort/${data?.taskId || taskNumber}`}
                 size={100}
                 level="H"
                 includeMargin={false}
@@ -201,14 +201,18 @@ export default function WorkOrderTemplate({ data, logoUrl }) {
               </div>
               
               {/* Damage Rows */}
-              {damages.length > 0 ? damages.map((damage, index) => (
+              {damages.length > 0 ? damages.map((damage, index) => {
+                const label = damage.sectionName
+                  ? `${damage.sectionName}skade ${damage.number || index + 1}`
+                  : `Skade ${damage.number || index + 1}`
+                return (
                 <div key={index} className={`flex ${index < damages.length - 1 ? 'border-b border-gray-300' : ''}`}>
                   <div className="w-14 p-3 border-r-2 border-gray-300 flex items-start justify-center">
                     <div className="w-4 h-4 border-2 border-gray-400 rounded"></div>
                   </div>
                   <div className="flex-1 p-3 border-r-2 border-gray-300">
                     <p className="text-gray-900 text-sm mb-1">
-                      <span className="font-semibold">Skade {damage.number || index + 1}:</span> {damage.buildingPart || damage.part || '-'}
+                      <span className="font-semibold">{label}:</span> {damage.buildingPart || damage.part || '-'}
                     </p>
                     <p className="text-gray-700 text-xs">
                       Antal: {damage.quantity || 1} / Placering: {damage.location || '-'} / Farve: {damage.color || '-'}
@@ -218,7 +222,8 @@ export default function WorkOrderTemplate({ data, logoUrl }) {
                     <p className="text-gray-700 text-xs">{damage.notes || ''}</p>
                   </div>
                 </div>
-              )) : (
+              )
+              }) : (
                 <div className="p-4 text-center text-gray-400">
                   Ingen skader registreret
                 </div>

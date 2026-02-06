@@ -68,6 +68,10 @@ export default function FotorapportReviewPage() {
 
       setReport(data)
       setDamages(data.damages || [])
+      // Auto-fyld "Dit navn" fra kunde kontakt (contactName)
+      if (data.contactName && data.status !== 'reviewed') {
+        setReviewerName(data.contactName)
+      }
       
       // Expand all damages by default
       const expanded = {}
@@ -285,7 +289,9 @@ export default function FotorapportReviewPage() {
         <div className="max-w-2xl mx-auto">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-bold">📷 Fotorapport</h1>
+              <h1 className="text-xl font-bold">
+                📷 {report?.reportNumber ? `Foto rapport #${report.reportNumber}` : 'Fotorapport'}
+              </h1>
               <p className="text-blue-100 text-sm print:text-gray-600">
                 {report?.address}, {report?.postalCode} {report?.city}
               </p>
@@ -356,8 +362,8 @@ export default function FotorapportReviewPage() {
                     <span className="w-6 h-6 rounded-full text-white text-xs flex items-center justify-center" style={{ backgroundColor: BRAND_BLUE }}>
                       {idx + 1}
                     </span>
-                    {damage.item || 'Skade'}
-                    {damage.location && <span className="text-gray-500 font-normal">- {damage.location}</span>}
+                    Skade #{idx + 1}
+                    {damage.location && <span className="text-gray-500 font-normal">– {damage.location}</span>}
                   </CardTitle>
                   <div className="flex items-center gap-2">
                     {damage.status === 'approved' && (
@@ -382,8 +388,8 @@ export default function FotorapportReviewPage() {
                     {/* Damage Details */}
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
-                        <p className="text-gray-500">Type</p>
-                        <p className="font-medium">{damage.type || '-'}</p>
+                        <p className="text-gray-500">Bygningsdel</p>
+                        <p className="font-medium">{damage.item || damage.type || '-'}</p>
                       </div>
                       <div>
                         <p className="text-gray-500">Placering</p>
@@ -537,10 +543,15 @@ export default function FotorapportReviewPage() {
         </div>
 
         {/* Footer */}
-        <div className="text-center py-6">
-          <p className="text-xs text-gray-400">
-            {firmainfo?.companyName || 'SMARTREP'} · CVR {firmainfo?.cvr || '25808436'} · {firmainfo?.phone || '+45 82 82 25 72'}
+        <div className="border-t border-gray-200 pt-6 space-y-3">
+          <p className="text-sm text-center text-gray-600">
+            Spørgsmål? Kontakt os på 82 82 25 72 eller info@smartrep.nu
           </p>
+          <p className="text-xs text-center text-gray-500">{firmainfo?.companyName || 'SMARTREP'} · CVR {firmainfo?.cvr || '25808436'}</p>
+          <div className="bg-gray-900 text-gray-300 rounded-lg px-4 py-3 text-center">
+            <p className="text-xs font-medium mb-1">ØVRIGE BRANDS UNDER SMARTREP</p>
+            <p className="text-sm">Alupleje · COLOR:UP · Coating.dk</p>
+          </div>
         </div>
       </main>
 

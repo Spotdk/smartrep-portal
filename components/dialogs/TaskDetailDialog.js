@@ -40,7 +40,10 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
   const [isEditing, setIsEditing] = useState(false)
   const [editData, setEditData] = useState({})
   const [showAddDamage, setShowAddDamage] = useState(false)
-  const [newDamage, setNewDamage] = useState({ part: '', quantity: 1, color: 'not_specified', location: '', notes: '' })
+  const [activeDamageSectionId, setActiveDamageSectionId] = useState(null)
+  const [newDamage, setNewDamage] = useState({ part: '', quantity: 1, color: 'not_specified', location: '', notes: '', sectionId: 'main' })
+  const [editingSectionId, setEditingSectionId] = useState(null)
+  const [editingSectionName, setEditingSectionName] = useState('')
   const [showOrderConfirmationModal, setShowOrderConfirmationModal] = useState(false)
   const [orderConfirmation, setOrderConfirmation] = useState(null)
   const [loadingOrderConfirmation, setLoadingOrderConfirmation] = useState(false)
@@ -73,6 +76,13 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
   // Initialize edit data when task changes or editing starts
   useEffect(() => {
     if (task) {
+      const sections = task.damageSections?.length
+        ? task.damageSections
+        : [{ id: 'main', name: 'Skader', includeOnPrint: true }]
+      const damages = (task.damages || []).map(d => ({
+        ...d,
+        sectionId: d.sectionId || 'main'
+      }))
       setEditData({
         address: formatAddress(task.address) || (typeof task.address === 'string' ? task.address : '') || '',
         postalCode: task.postalCode || '',
@@ -91,7 +101,8 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
         types: Array.isArray(task.types) ? [...task.types] : (task.taskType ? [task.taskType] : []),
         taskSummary: task.taskSummary || '',
         notes: task.notes || '',
-        damages: task.damages || []
+        damageSections: sections,
+        damages
       })
     }
   }, [task, isEditing])
@@ -232,16 +243,55 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
   // Add new damage
   const handleAddDamage = () => {
     if (!newDamage.part || !newDamage.location) return
-    const damage = { ...newDamage, id: Date.now().toString() }
+    const sectionId = activeDamageSectionId || newDamage.sectionId || 'main'
+    const damage = { ...newDamage, id: Date.now().toString(), sectionId }
     setEditData(prev => ({ ...prev, damages: [...prev.damages, damage] }))
-    setNewDamage({ part: '', quantity: 1, color: 'not_specified', location: '', notes: '' })
+    setNewDamage({ part: '', quantity: 1, color: 'not_specified', location: '', notes: '', sectionId })
     setShowAddDamage(false)
+    setActiveDamageSectionId(null)
   }
 
   // Remove damage
   const handleRemoveDamage = (damageId) => {
     setEditData(prev => ({ ...prev, damages: prev.damages.filter(d => d.id !== damageId) }))
   }
+
+  // Add damage section
+  const handleAddSection = () => {
+    const id = `sec-${Date.now()}`
+    const newSection = { id, name: 'Ekstra skader', includeOnPrint: true }
+    setEditData(prev => ({
+      ...prev,
+      damageSections: [...(prev.damageSections || []), newSection]
+    }))
+    setActiveDamageSectionId(id)
+    setShowAddDamage(true)
+    setNewDamage(prev => ({ ...prev, sectionId: id }))
+  }
+
+  // Update section
+  const handleUpdateSection = (sectionId, updates) => {
+    setEditData(prev => ({
+      ...prev,
+      damageSections: (prev.damageSections || []).map(s =>
+        s.id === sectionId ? { ...s, ...updates } : s
+      )
+    }))
+    setEditingSectionId(null)
+  }
+
+  // Remove section (only if empty, damages move to main)
+  const handleRemoveSection = (sectionId) => {
+    if (sectionId === 'main') return
+    setEditData(prev => {
+      const damages = (prev.damages || []).map(d =>
+        d.sectionId === sectionId ? { ...d, sectionId: 'main' } : d
+      )
+      const damageSections = (prev.damageSections || []).filter(s => s.id !== sectionId)
+      return { ...prev, damageSections, damages }
+    })
+  }
+
 
   // Load contacts for the company when change contact dialog opens
   const loadCompanyContacts = async () => {
@@ -533,21 +583,124 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
               </div>
             )}
             
-            {/* Damages - Editable */}
+            {/* Damages - Editable med skade-sektioner */}
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <Label className="text-gray-500 text-xs">Skader ({isEditing ? editData.damages?.length : task.damages?.length || 0})</Label>
-                {isEditing && (
-                  <Button variant="outline" size="sm" onClick={() => setShowAddDamage(true)}>
-                    <Plus className="w-4 h-4 mr-1" />Tilføj skade
-                  </Button>
-                )}
-              </div>
+              <Label className="text-gray-500 text-xs mb-2 block">Skader ({(isEditing ? editData.damages : task.damages)?.length || 0})</Label>
+              
+              {(() => {
+                const sections = isEditing ? (editData.damageSections || [{ id: 'main', name: 'Skader', includeOnPrint: true }]) : (task.damageSections?.length ? task.damageSections : [{ id: 'main', name: 'Skader', includeOnPrint: true }])
+                const damages = isEditing ? editData.damages : (task.damages || []).map(d => ({ ...d, sectionId: d.sectionId || 'main' }))
+                return (
+                  <div className="space-y-4">
+                    {sections.map((section) => {
+                      const sectionDamages = damages.filter(d => (d.sectionId || 'main') === section.id)
+                      const isMain = section.id === 'main'
+                      return (
+                        <div key={section.id} className="border-2 border-gray-200 rounded-lg overflow-hidden">
+                          {/* Sektions-header */}
+                          <div className="bg-gray-100 px-3 py-2 flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              {editingSectionId === section.id ? (
+                                <>
+                                  <Input
+                                    className="h-8 w-40"
+                                    value={editingSectionName}
+                                    onChange={(e) => setEditingSectionName(e.target.value)}
+                                    placeholder="Sektionsnavn"
+                                  />
+                                  <Button size="sm" onClick={() => handleUpdateSection(section.id, { name: editingSectionName.trim() || section.name })}>Gem</Button>
+                                  <Button size="sm" variant="outline" onClick={() => { setEditingSectionId(null); setEditingSectionName('') }}>Annuller</Button>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="font-medium text-sm">{section.name} ({sectionDamages.length})</span>
+                                  {isEditing && !isMain && (
+                                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditingSectionId(section.id); setEditingSectionName(section.name) }}>
+                                      <Pencil className="w-3 h-3" />
+                                    </Button>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                            {isEditing && (
+                              <div className="flex items-center gap-2">
+                                <label className="flex items-center gap-1 text-xs">
+                                  <Checkbox
+                                    checked={section.includeOnPrint !== false}
+                                    onCheckedChange={(v) => handleUpdateSection(section.id, { includeOnPrint: !!v })}
+                                  />
+                                  Inkluder på print
+                                </label>
+                                {!isMain && (
+                                  <Button variant="ghost" size="sm" className="text-red-600" onClick={() => handleRemoveSection(section.id)}>
+                                    Fjern sektion
+                                  </Button>
+                                )}
+                                <Button variant="outline" size="sm" onClick={() => { setActiveDamageSectionId(section.id); setNewDamage(prev => ({ ...prev, sectionId: section.id })); setShowAddDamage(true) }}>
+                                  <Plus className="w-3 h-3 mr-1" />Tilføj skade
+                                </Button>
+                              </div>
+                            )}
+                            {!isEditing && (
+                              <label className="flex items-center gap-1 text-xs text-gray-500">
+                                <Checkbox checked={section.includeOnPrint !== false} disabled />
+                                Inkluder på print
+                              </label>
+                            )}
+                          </div>
+                          {/* Damages i sektionen */}
+                          <div className="p-2 space-y-2">
+                            {sectionDamages.map((damage, idx) => (
+                              <div key={damage.id || idx} className="p-3 bg-orange-50 rounded-lg border border-orange-200">
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <span className="font-medium">{section.name} #{idx + 1}: {options?.buildingParts?.find(p=>p.value===damage.part)?.label || damage.part || damage.item}</span>
+                                    <div className="text-sm text-gray-600 mt-1">
+                                      Antal: {damage.quantity || 1}
+                                      {damage.color && damage.color !== 'not_specified' && ` • Farve: ${options?.colors?.find(c=>c.value===damage.color)?.label || damage.color}`}
+                                      {damage.location && ` • Placering: ${options?.locations?.find(l=>l.value===damage.location)?.label || damage.location}`}
+                                    </div>
+                                    {damage.notes && <p className="text-sm text-gray-500 mt-1 italic">{damage.notes}</p>}
+                                  </div>
+                                  {isEditing && (
+                                    <Button variant="ghost" size="icon" onClick={() => handleRemoveDamage(damage.id)}>
+                                      <Trash2 className="w-4 h-4 text-red-500" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                            {sectionDamages.length === 0 && !isEditing && (
+                              <p className="text-sm text-gray-500 py-2 px-3">Ingen skader</p>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {isEditing && (
+                      <Button variant="outline" size="sm" onClick={handleAddSection} className="w-full">
+                        <Plus className="w-4 h-4 mr-1" />Tilføj skade-sektion
+                      </Button>
+                    )}
+                  </div>
+                )
+              })()}
               
               {/* Add Damage Form */}
-              {showAddDamage && (
-                <div className="p-4 border-2 border-blue-200 rounded-lg space-y-3 bg-blue-50/30 mb-3">
+              {showAddDamage && isEditing && (
+                <div className="p-4 border-2 border-blue-200 rounded-lg space-y-3 bg-blue-50/30 mt-3">
                   <p className="font-medium text-sm">Tilføj ny skade</p>
+                  {(editData.damageSections || []).length > 1 && (
+                    <div>
+                      <Label className="text-xs">Sektion</Label>
+                      <Select value={newDamage.sectionId || 'main'} onValueChange={(v) => setNewDamage(prev => ({ ...prev, sectionId: v }))}>
+                        <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {(editData.damageSections || []).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label className="text-xs">Bygningsdel *</Label>
@@ -592,34 +745,8 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
                   </div>
                   <div className="flex gap-2">
                     <Button size="sm" onClick={handleAddDamage} disabled={!newDamage.part || !newDamage.location}>Tilføj</Button>
-                    <Button size="sm" variant="outline" onClick={() => setShowAddDamage(false)}>Annuller</Button>
+                    <Button size="sm" variant="outline" onClick={() => { setShowAddDamage(false); setActiveDamageSectionId(null) }}>Annuller</Button>
                   </div>
-                </div>
-              )}
-              
-              {/* Damages List */}
-              {(isEditing ? editData.damages : task.damages)?.length > 0 && (
-                <div className="space-y-2">
-                  {(isEditing ? editData.damages : task.damages).map((damage, idx) => (
-                    <div key={damage.id || idx} className="p-3 bg-orange-50 rounded-lg border border-orange-200">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <span className="font-medium">Skade #{idx + 1}: {options?.buildingParts?.find(p=>p.value===damage.part)?.label || damage.part || damage.item}</span>
-                          <div className="text-sm text-gray-600 mt-1">
-                            Antal: {damage.quantity || 1}
-                            {damage.color && damage.color !== 'not_specified' && ` • Farve: ${options?.colors?.find(c=>c.value===damage.color)?.label || damage.color}`}
-                            {damage.location && ` • Placering: ${options?.locations?.find(l=>l.value===damage.location)?.label || damage.location}`}
-                          </div>
-                          {damage.notes && <p className="text-sm text-gray-500 mt-1 italic">{damage.notes}</p>}
-                        </div>
-                        {isEditing && (
-                          <Button variant="ghost" size="icon" onClick={() => handleRemoveDamage(damage.id)}>
-                            <Trash2 className="w-4 h-4 text-red-500" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
                 </div>
               )}
             </div>

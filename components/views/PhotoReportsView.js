@@ -189,7 +189,7 @@ export default function PhotoReportsView({ user }) {
                         </span>
                       </div>
                       <h3 className="font-semibold text-gray-900">
-                        {formatAddress(report.taskAddress) || formatAddress(task?.address) || (typeof task?.address === 'string' ? task.address : '') || 'Ingen adresse'}
+                        {report.addressDisplay || formatAddress(report.taskAddress) || formatAddress(task?.address) || (typeof task?.address === 'string' ? task.address : '') || [report.address, report.postalCode, report.city].filter(Boolean).join(', ') || 'Ingen adresse'}
                       </h3>
                       <p className="text-sm text-gray-500">
                         Opgave #{report.taskNumber || task?.taskNumber || 'N/A'} • {report.companyName || task?.companyName}
