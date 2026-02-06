@@ -213,6 +213,7 @@ async function fetchOpenMeteoForecast(lat, lon) {
     latitude: String(lat),
     longitude: String(lon),
     daily: 'temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,relative_humidity_2m_mean',
+    wind_speed_unit: 'ms',
     timezone: 'Europe/Copenhagen',
     forecast_days: '14'
   })
