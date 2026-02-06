@@ -14,6 +14,17 @@ import {
   Loader2, X, Send, RefreshCw, Megaphone, MessageSquare, Users, Mail, Plus,
   Calendar, Key, Building2
 } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { format } from 'date-fns'
 import { da } from 'date-fns/locale'
 import { api, BRAND_BLUE, STATUS_CONFIG } from '@/lib/constants'
@@ -28,6 +39,9 @@ const TaskCommunicationSection = ({ task, user }) => {
   const [messageType, setMessageType] = useState('email')
   const [recipient, setRecipient] = useState('contact')
   const [message, setMessage] = useState('')
+  const [twoWaySms, setTwoWaySms] = useState(false)
+  const [showTwoWayConfirm, setShowTwoWayConfirm] = useState(false)
+  const [pendingSend, setPendingSend] = useState(null)
   
   // Bygherre dialog states
   const [showBygherreDialog, setShowBygherreDialog] = useState(false)
@@ -67,7 +81,32 @@ const TaskCommunicationSection = ({ task, user }) => {
     }
   }
 
-  const sendMessage = async () => {
+  const doSendMessage = async (useTwoWay = false) => {
+    const recipientInfo = getRecipientInfo()
+    setSending(true)
+    try {
+      await api.post('/communications/send', {
+        taskId: task.id,
+        type: messageType,
+        to: messageType === 'email' ? recipientInfo.email : recipientInfo.phone,
+        toName: recipientInfo.name,
+        message: message,
+        subject: messageType === 'email' ? `SMARTREP: Vedr. opgave ${task.taskNumber}` : undefined,
+        twoWay: messageType === 'sms' ? useTwoWay : undefined
+      })
+      alert('✅ Besked sendt!')
+      setMessage('')
+      loadCommunications()
+    } catch (err) {
+      alert('Fejl: ' + (err.message || 'Kunne ikke sende'))
+    } finally {
+      setSending(false)
+      setPendingSend(null)
+      setShowTwoWayConfirm(false)
+    }
+  }
+
+  const sendMessage = () => {
     const recipientInfo = getRecipientInfo()
     if (messageType === 'email' && !recipientInfo.email) {
       alert('Modtager har ingen email')
@@ -81,25 +120,12 @@ const TaskCommunicationSection = ({ task, user }) => {
       alert('Indtast en besked')
       return
     }
-
-    setSending(true)
-    try {
-      await api.post('/communications/send', {
-        taskId: task.id,
-        type: messageType,
-        to: messageType === 'email' ? recipientInfo.email : recipientInfo.phone,
-        toName: recipientInfo.name,
-        message: message,
-        subject: messageType === 'email' ? `SMARTREP: Vedr. opgave ${task.taskNumber}` : undefined
-      })
-      alert('✅ Besked sendt!')
-      setMessage('')
-      loadCommunications()
-    } catch (err) {
-      alert('Fejl: ' + (err.message || 'Kunne ikke sende'))
-    } finally {
-      setSending(false)
+    if (messageType === 'sms' && twoWaySms) {
+      setPendingSend({ twoWay: true })
+      setShowTwoWayConfirm(true)
+      return
     }
+    doSendMessage(twoWaySms)
   }
 
   // Bygherre actions
@@ -461,6 +487,12 @@ const TaskCommunicationSection = ({ task, user }) => {
                 </Select>
               </div>
             </div>
+            {messageType === 'sms' && (
+              <div className="flex items-center gap-2 mb-3">
+                <Switch id="twoWay" checked={twoWaySms} onCheckedChange={setTwoWaySms} />
+                <Label htmlFor="twoWay" className="text-sm">Aktivér 2-vejs (besked sendes fra 52517040, modtager kan besvare)</Label>
+              </div>
+            )}
             <div className="mb-4">
               <Textarea 
                 value={message} 
@@ -474,6 +506,20 @@ const TaskCommunicationSection = ({ task, user }) => {
               Send {messageType === 'email' ? 'Email' : 'SMS'}
             </Button>
           </div>
+
+          {/* 2-vejs bekræftelse */}
+          <AlertDialog open={showTwoWayConfirm} onOpenChange={setShowTwoWayConfirm}>
+            <AlertDialogContent>
+              <AlertDialogTitle>2-vejs SMS</AlertDialogTitle>
+              <AlertDialogDescription>
+                Beskeden sendes fra 52517040. Modtager kan besvare. Alle SMS i denne tråd kører som 2-vejs kommunikation.
+              </AlertDialogDescription>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Annuller</AlertDialogCancel>
+                <AlertDialogAction onClick={() => doSendMessage(true)}>OK</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           {/* Communication History */}
           {loading ? (

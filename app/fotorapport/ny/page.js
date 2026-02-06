@@ -50,6 +50,9 @@ export default function NyFotorapportPage() {
   const [showAddressSuggestions, setShowAddressSuggestions] = useState(false)
   const [caseNumber, setCaseNumber] = useState('')
   const addressInputRef = useRef(null)
+  const addressSearchQueryRef = useRef('')
+  const addressSuggestionsOpenRef = useRef(false)
+  const addressDebounceRef = useRef(null)
   
   useEffect(() => {
     api.get('/auth/me')
@@ -144,29 +147,56 @@ export default function NyFotorapportPage() {
     }
   }
 
-  // DAWA adresse-autocomplete
-  const searchAddress = async (query) => {
-    if (query.length < 3) { setAddressSuggestions([]); return }
-    try {
-      const res = await fetch(`https://api.dataforsyningen.dk/autocomplete?q=${encodeURIComponent(query)}&type=adresse&fuzzy=true`)
-      const results = await res.json()
-      setAddressSuggestions(results.slice(0, 5))
-      setShowAddressSuggestions(true)
-    } catch (err) { console.error('Address search:', err) }
+  // DAWA adresse-autocomplete (debounced, race-safe, aldrig tøm input)
+  const searchAddress = (query) => {
+    if (query.length < 3) {
+      setAddressSuggestions([])
+      setShowAddressSuggestions(false)
+      return
+    }
+    addressSearchQueryRef.current = query
+    if (addressDebounceRef.current) clearTimeout(addressDebounceRef.current)
+    addressDebounceRef.current = setTimeout(async () => {
+      const q = addressSearchQueryRef.current
+      if (q.length < 3) return
+      try {
+        const res = await fetch(`https://api.dataforsyningen.dk/autocomplete?q=${encodeURIComponent(q)}&type=adresse&fuzzy=true`)
+        const results = await res.json()
+        if (addressSearchQueryRef.current !== q) return
+        setAddressSuggestions(Array.isArray(results) ? results.slice(0, 5) : [])
+        setShowAddressSuggestions(true)
+        addressSuggestionsOpenRef.current = true
+      } catch (err) { console.error('Address search:', err) }
+    }, 300)
   }
   const selectAddress = (suggestion) => {
+    addressSuggestionsOpenRef.current = false
     const data = suggestion.data || suggestion.adresse
+    const fallbackTekst = suggestion.tekst || suggestion.forslagstekst || ''
+    let address = ''
+    let postalCode = ''
+    let city = ''
     if (data) {
-      setAddressInfo({
-        address: (data.vejnavn || '') + (data.husnr ? ' ' + data.husnr : ''),
-        postalCode: data.postnr || '',
-        city: data.postnrnavn || ''
-      })
+      address = [data.vejnavn, data.husnr].filter(Boolean).join(' ').trim() || fallbackTekst
+      postalCode = data.postnr || data.postnummer || ''
+      city = data.postnrnavn || data.postnummernavn || ''
     } else {
-      setAddressInfo(prev => ({ ...prev, address: suggestion.tekst || suggestion.forslagstekst || '' }))
+      address = fallbackTekst
     }
+    setAddressInfo(prev => ({
+      address: address || prev.address,
+      postalCode: postalCode || prev.postalCode,
+      city: city || prev.city
+    }))
     setShowAddressSuggestions(false)
     setAddressSuggestions([])
+  }
+  const closeAddressSuggestions = () => {
+    if (!addressSuggestionsOpenRef.current) return
+    setTimeout(() => {
+      setShowAddressSuggestions(false)
+      addressSuggestionsOpenRef.current = false
+    }, 150)
   }
 
   const filteredTasks = taskSearchQuery.trim()
@@ -447,14 +477,21 @@ export default function NyFotorapportPage() {
                   <Input
                     ref={addressInputRef}
                     value={addressInfo.address}
-                    onChange={(e) => { setAddressInfo(prev => ({ ...prev, address: e.target.value })); searchAddress(e.target.value) }}
-                    onFocus={() => addressInfo.address.length >= 3 && setShowAddressSuggestions(true)}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setAddressInfo(prev => ({ ...prev, address: v }))
+                      if (v.length < 3) setShowAddressSuggestions(false)
+                      else searchAddress(v)
+                    }}
+                    onBlur={closeAddressSuggestions}
+                    onFocus={() => addressSuggestions.length > 0 && setShowAddressSuggestions(true)}
                     placeholder="Indtast adresse – fx Slotsgade 155"
+                    autoComplete="off"
                   />
                   {showAddressSuggestions && addressSuggestions.length > 0 && (
-                    <div className="absolute z-10 mt-1 w-full bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    <div className="absolute z-20 mt-1 w-full bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
                       {addressSuggestions.map((s, i) => (
-                        <button key={i} type="button" className="w-full text-left px-3 py-2 hover:bg-gray-100" onClick={() => selectAddress(s)}>
+                        <button key={i} type="button" className="w-full text-left px-3 py-2 hover:bg-gray-100" onMouseDown={(e) => { e.preventDefault(); selectAddress(s) }}>
                           {s.tekst || s.forslagstekst}
                         </button>
                       ))}
@@ -615,14 +652,21 @@ export default function NyFotorapportPage() {
                       <Label className="text-sm">Adresse (DAWA autocomplete eller manuel)</Label>
                       <Input 
                         value={addressInfo.address}
-                        onChange={(e) => { setAddressInfo(prev => ({ ...prev, address: e.target.value })); if (e.target.value.length >= 3) searchAddress(e.target.value); else setShowAddressSuggestions(false); }}
-                        onFocus={() => addressInfo.address.length >= 3 && setShowAddressSuggestions(true)}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          setAddressInfo(prev => ({ ...prev, address: v }))
+                          if (v.length < 3) setShowAddressSuggestions(false)
+                          else searchAddress(v)
+                        }}
+                        onBlur={closeAddressSuggestions}
+                        onFocus={() => addressSuggestions.length > 0 && setShowAddressSuggestions(true)}
                         placeholder="Indtast adresse"
+                        autoComplete="off"
                       />
                       {showAddressSuggestions && addressSuggestions.length > 0 && (
-                        <div className="absolute z-10 mt-1 w-full bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        <div className="absolute z-20 mt-1 w-full bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
                           {addressSuggestions.map((s, i) => (
-                            <button key={i} type="button" className="w-full text-left px-3 py-2 hover:bg-gray-100" onClick={() => selectAddress(s)}>{s.tekst || s.forslagstekst}</button>
+                            <button key={i} type="button" className="w-full text-left px-3 py-2 hover:bg-gray-100" onMouseDown={(e) => { e.preventDefault(); selectAddress(s) }}>{s.tekst || s.forslagstekst}</button>
                           ))}
                         </div>
                       )}

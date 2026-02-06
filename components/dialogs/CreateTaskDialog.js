@@ -14,6 +14,7 @@ import {
   Plus, Trash2, MapPin, Loader2, X, Upload, File, Search, UserPlus, Lock
 } from 'lucide-react'
 import { api, BRAND_BLUE } from '@/lib/constants'
+import { PhoneInput } from '@/components/ui/phone-input'
 
 const CreateTaskDialog = ({ open, onClose, options, companies, user, onCreated }) => {
   const [formData, setFormData] = useState({ 
@@ -351,10 +352,9 @@ const CreateTaskDialog = ({ open, onClose, options, companies, user, onCreated }
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label className="text-xs">Mobilnummer</Label>
-                      <Input 
+                      <PhoneInput 
                         value={newContact.phone} 
                         onChange={(e) => setNewContact(prev => ({ ...prev, phone: e.target.value }))}
-                        placeholder="+45 12345678"
                       />
                     </div>
                     <div>
@@ -440,11 +440,11 @@ const CreateTaskDialog = ({ open, onClose, options, companies, user, onCreated }
               <Label className="font-medium">Bygherre information</Label>
               <div className="grid grid-cols-2 gap-4">
                 <div><Label className="text-xs">Bygherre 1 navn</Label><Input value={formData.owner1Name} onChange={(e) => setFormData(prev => ({ ...prev, owner1Name: e.target.value }))} /></div>
-                <div><Label className="text-xs">Bygherre 1 mobil</Label><Input value={formData.owner1Phone} onChange={(e) => setFormData(prev => ({ ...prev, owner1Phone: e.target.value }))} /></div>
+                <div><Label className="text-xs">Bygherre 1 mobil</Label><PhoneInput value={formData.owner1Phone} onChange={(e) => setFormData(prev => ({ ...prev, owner1Phone: e.target.value }))} /></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div><Label className="text-xs">Bygherre 2 navn</Label><Input value={formData.owner2Name} onChange={(e) => setFormData(prev => ({ ...prev, owner2Name: e.target.value }))} /></div>
-                <div><Label className="text-xs">Bygherre 2 mobil</Label><Input value={formData.owner2Phone} onChange={(e) => setFormData(prev => ({ ...prev, owner2Phone: e.target.value }))} /></div>
+                <div><Label className="text-xs">Bygherre 2 mobil</Label><PhoneInput value={formData.owner2Phone} onChange={(e) => setFormData(prev => ({ ...prev, owner2Phone: e.target.value }))} /></div>
               </div>
             </div>
           )}

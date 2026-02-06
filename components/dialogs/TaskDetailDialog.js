@@ -21,6 +21,7 @@ import { format } from 'date-fns'
 import { da } from 'date-fns/locale'
 import { api, BRAND_BLUE, STATUS_CONFIG, getIdDaysColor } from '@/lib/constants'
 import { formatAddress, taskAddressString } from '@/lib/utils'
+import { PhoneInput } from '@/components/ui/phone-input'
 import WeatherIcon from '@/components/shared/WeatherIcon'
 import WeatherStatusWidget from '@/components/weather/WeatherStatusWidget'
 
@@ -55,6 +56,7 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
   const [testDeliveryLoading, setTestDeliveryLoading] = useState(false)
   const [showWeatherReportModal, setShowWeatherReportModal] = useState(false)
   const [geocodeLoading, setGeocodeLoading] = useState(false)
+  const [uploadingDamagePhoto, setUploadingDamagePhoto] = useState(null) // { damageId }
   const autoGeocodeAttemptedRef = useRef(null)
 
   // Opgave har adresse men mangler koordinater (vejr kræver lat/long)
@@ -251,10 +253,13 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
     setActiveDamageSectionId(null)
   }
 
-  // Remove damage
+  // Remove damage (match id eller _id fra API)
   const handleRemoveDamage = (damageId) => {
-    setEditData(prev => ({ ...prev, damages: prev.damages.filter(d => d.id !== damageId) }))
+    setEditData(prev => ({ ...prev, damages: prev.damages.filter(d => (d.id !== damageId && d._id !== damageId)) }))
   }
+
+  // Stabil id for skade (til reject/remove/photo)
+  const getDamageId = (d) => d?.id ?? d?._id ?? null
 
   // Add damage section
   const handleAddSection = () => {
@@ -292,6 +297,72 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
     })
   }
 
+  // Mark damage as rejected by customer (kun i rediger-tilstand)
+  const handleRejectDamage = (damageId) => {
+    setEditData(prev => ({
+      ...prev,
+      damages: (prev.damages || []).map(d =>
+        (d.id === damageId || d._id === damageId) ? { ...d, rejectedByCustomer: true, rejectedAt: new Date().toISOString() } : d
+      )
+    }))
+  }
+
+  // Fjern afvisning (clear flag; timestamp i opgavens log)
+  const handleUnrejectDamage = async (damageId) => {
+    setEditData(prev => ({
+      ...prev,
+      damages: (prev.damages || []).map(d =>
+        (d.id === damageId || d._id === damageId) ? { ...d, rejectedByCustomer: false, rejectedAt: null } : d
+      )
+    }))
+    if (task?.id) {
+      try {
+        await api.post('/logs', { entityType: 'task', entityId: task.id, action: 'damage_unreject', description: 'Afvisning fjernet fra skadelinje', changes: { damageId } })
+      } catch (_) {}
+    }
+  }
+
+  // Foto upload pr. skade (op til 4)
+  const uploadDamagePhoto = async (damageId, file) => {
+    if (!file?.type?.startsWith('image/')) return
+    setUploadingDamagePhoto({ damageId })
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      if (task?.id) fd.append('taskId', task.id)
+      fd.append('damageId', String(damageId))
+      fd.append('photoType', 'damage')
+      const token = typeof window !== 'undefined' ? localStorage.getItem('smartrep_token') : null
+      const res = await fetch('/api/upload', { method: 'POST', body: fd, headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      const data = await res.json()
+      if (!data?.file?.url) throw new Error(data?.error || 'Ingen URL')
+      const url = data.file.url.startsWith('http') ? data.file.url : (typeof window !== 'undefined' ? window.location.origin : '') + data.file.url
+      setEditData(prev => ({
+        ...prev,
+        damages: (prev.damages || []).map(d =>
+          (d.id === damageId || d._id === damageId)
+            ? { ...d, photos: [...(d.photos || []), url].slice(0, 4) }
+            : d
+        )
+      }))
+    } catch (err) {
+      console.error(err)
+      alert('Upload fejl: ' + (err?.message || 'Kunne ikke uploade'))
+    } finally {
+      setUploadingDamagePhoto(null)
+    }
+  }
+
+  const removeDamagePhoto = (damageId, photoIndex) => {
+    setEditData(prev => ({
+      ...prev,
+      damages: (prev.damages || []).map(d =>
+        (d.id === damageId || d._id === damageId)
+          ? { ...d, photos: (d.photos || []).filter((_, i) => i !== photoIndex) }
+          : d
+      )
+    }))
+  }
 
   // Load contacts for the company when change contact dialog opens
   const loadCompanyContacts = async () => {
@@ -482,7 +553,7 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
                       </div>
                       <div>
                         <Label className="text-xs">Bygherre 1 mobil</Label>
-                        <Input value={editData.owner1Phone} onChange={(e) => setEditData(prev => ({ ...prev, owner1Phone: e.target.value }))} placeholder="Telefon" />
+                        <PhoneInput value={editData.owner1Phone} onChange={(e) => setEditData(prev => ({ ...prev, owner1Phone: e.target.value }))} />
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
@@ -492,7 +563,7 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
                       </div>
                       <div>
                         <Label className="text-xs">Bygherre 2 mobil</Label>
-                        <Input value={editData.owner2Phone} onChange={(e) => setEditData(prev => ({ ...prev, owner2Phone: e.target.value }))} placeholder="Telefon" />
+                        <PhoneInput value={editData.owner2Phone} onChange={(e) => setEditData(prev => ({ ...prev, owner2Phone: e.target.value }))} />
                       </div>
                     </div>
                   </div>
@@ -590,15 +661,21 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
               {(() => {
                 const sections = isEditing ? (editData.damageSections || [{ id: 'main', name: 'Skader', includeOnPrint: true }]) : (task.damageSections?.length ? task.damageSections : [{ id: 'main', name: 'Skader', includeOnPrint: true }])
                 const damages = isEditing ? editData.damages : (task.damages || []).map(d => ({ ...d, sectionId: d.sectionId || 'main' }))
+                const sectionBgColors = ['bg-gray-100', 'bg-blue-50', 'bg-amber-50', 'bg-green-50', 'bg-slate-100', 'bg-sky-50']
+                const sectionBorderColors = ['border-gray-200', 'border-blue-200', 'border-amber-200', 'border-green-200', 'border-slate-200', 'border-sky-200']
+                const damageCardBg = ['bg-gray-50', 'bg-blue-50/50', 'bg-amber-50/50', 'bg-green-50/50', 'bg-slate-50', 'bg-sky-50/50']
                 return (
                   <div className="space-y-4">
-                    {sections.map((section) => {
+                    {sections.map((section, sectionIdx) => {
                       const sectionDamages = damages.filter(d => (d.sectionId || 'main') === section.id)
                       const isMain = section.id === 'main'
+                      const secColor = sectionBgColors[sectionIdx % sectionBgColors.length]
+                      const secBorder = sectionBorderColors[sectionIdx % sectionBorderColors.length]
+                      const cardBg = damageCardBg[sectionIdx % damageCardBg.length]
                       return (
-                        <div key={section.id} className="border-2 border-gray-200 rounded-lg overflow-hidden">
+                        <div key={section.id} className={`border-2 ${secBorder} rounded-lg overflow-hidden`}>
                           {/* Sektions-header */}
-                          <div className="bg-gray-100 px-3 py-2 flex items-center justify-between gap-2 flex-wrap">
+                          <div className={`${secColor} px-3 py-2 flex items-center justify-between gap-2 flex-wrap`}>
                             <div className="flex items-center gap-2 flex-1 min-w-0">
                               {editingSectionId === section.id ? (
                                 <>
@@ -622,21 +699,30 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
                                 </>
                               )}
                             </div>
-                            {isEditing && (
+                            {(isEditing || true) && (
                               <div className="flex items-center gap-2">
-                                <label className="flex items-center gap-1 text-xs">
-                                  <Checkbox
-                                    checked={section.includeOnPrint !== false}
-                                    onCheckedChange={(v) => handleUpdateSection(section.id, { includeOnPrint: !!v })}
-                                  />
-                                  Inkluder på print
-                                </label>
-                                {!isMain && (
-                                  <Button variant="ghost" size="sm" className="text-red-600" onClick={() => handleRemoveSection(section.id)}>
-                                    Fjern sektion
-                                  </Button>
+                                {isEditing && (
+                                  <>
+                                    <label className="flex items-center gap-1 text-xs">
+                                      <Checkbox
+                                        checked={section.includeOnPrint !== false}
+                                        onCheckedChange={(v) => handleUpdateSection(section.id, { includeOnPrint: !!v })}
+                                      />
+                                      Inkluder på print
+                                    </label>
+                                    {!isMain && (
+                                      <Button variant="ghost" size="sm" className="text-red-600" onClick={() => handleRemoveSection(section.id)}>
+                                        Fjern sektion
+                                      </Button>
+                                    )}
+                                  </>
                                 )}
-                                <Button variant="outline" size="sm" onClick={() => { setActiveDamageSectionId(section.id); setNewDamage(prev => ({ ...prev, sectionId: section.id })); setShowAddDamage(true) }}>
+                                <Button variant="outline" size="sm" onClick={() => {
+                                  if (!isEditing) setIsEditing(true)
+                                  setActiveDamageSectionId(section.id)
+                                  setNewDamage(prev => ({ ...prev, sectionId: section.id }))
+                                  setShowAddDamage(true)
+                                }}>
                                   <Plus className="w-3 h-3 mr-1" />Tilføj skade
                                 </Button>
                               </div>
@@ -651,9 +737,12 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
                           {/* Damages i sektionen */}
                           <div className="p-2 space-y-2">
                             {sectionDamages.map((damage, idx) => (
-                              <div key={damage.id || idx} className="p-3 bg-orange-50 rounded-lg border border-orange-200">
+                              <div key={damage.id || idx} className={`p-3 rounded-lg border ${cardBg} ${secBorder} ${damage.rejectedByCustomer ? 'opacity-80' : ''}`} style={damage.rejectedByCustomer ? { textDecoration: 'line-through', color: '#b91c1c', borderColor: '#b91c1c' } : {}}>
                                 <div className="flex items-start justify-between">
                                   <div className="flex-1">
+                                    {damage.rejectedByCustomer && damage.rejectedAt && (
+                                      <p className="text-xs text-red-600 mb-1">Afvist af kunde {format(new Date(damage.rejectedAt), 'dd/MM/yyyy HH:mm', { locale: da })}</p>
+                                    )}
                                     <span className="font-medium">{section.name} #{idx + 1}: {options?.buildingParts?.find(p=>p.value===damage.part)?.label || damage.part || damage.item}</span>
                                     <div className="text-sm text-gray-600 mt-1">
                                       Antal: {damage.quantity || 1}
@@ -663,11 +752,48 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
                                     {damage.notes && <p className="text-sm text-gray-500 mt-1 italic">{damage.notes}</p>}
                                   </div>
                                   {isEditing && (
-                                    <Button variant="ghost" size="icon" onClick={() => handleRemoveDamage(damage.id)}>
-                                      <Trash2 className="w-4 h-4 text-red-500" />
-                                    </Button>
+                                    <div className="flex items-center gap-1">
+                                      {damage.rejectedByCustomer ? (
+                                        <Button variant="ghost" size="sm" className="text-xs" onClick={() => handleUnrejectDamage(getDamageId(damage))}>
+                                          Fjern afvisning
+                                        </Button>
+                                      ) : (
+                                        <Button variant="ghost" size="sm" className="text-xs text-red-600" onClick={() => handleRejectDamage(getDamageId(damage))}>
+                                          Markér afvist af kunde
+                                        </Button>
+                                      )}
+                                      <Button variant="ghost" size="icon" onClick={() => handleRemoveDamage(damage.id || damage._id)}>
+                                        <Trash2 className="w-4 h-4 text-red-500" />
+                                      </Button>
+                                    </div>
                                   )}
                                 </div>
+                                {/* Foto pr. skade (op til 4) – kun ved redigering */}
+                                {isEditing && (
+                                  <div className="mt-2 flex flex-wrap gap-2 items-center">
+                                    {(damage.photos || []).map((url, photoIdx) => (
+                                      <div key={photoIdx} className="relative">
+                                        <img src={url.startsWith('http') ? url : (typeof window !== 'undefined' ? window.location.origin : '') + url} alt="" className="w-16 h-16 object-cover rounded border" />
+                                        <Button type="button" variant="ghost" size="icon" className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-red-500 text-white hover:bg-red-600" onClick={() => removeDamagePhoto(getDamageId(damage), photoIdx)}>
+                                          <X className="w-3 h-3" />
+                                        </Button>
+                                      </div>
+                                    ))}
+                                    {(damage.photos || []).length < 4 && (
+                                      <label className="flex flex-col items-center justify-center w-16 h-16 rounded border border-dashed border-gray-300 bg-gray-50 cursor-pointer hover:bg-gray-100">
+                                        {uploadingDamagePhoto?.damageId === getDamageId(damage) ? (
+                                          <Loader2 className="w-6 h-6 animate-spin text-gray-500" />
+                                        ) : (
+                                          <>
+                                            <Plus className="w-5 h-5 text-gray-500" />
+                                            <span className="text-xs text-gray-500 mt-0.5">Foto</span>
+                                          </>
+                                        )}
+                                        <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) { uploadDamagePhoto(getDamageId(damage), f); e.target.value = '' } }} disabled={!!uploadingDamagePhoto} />
+                                      </label>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             ))}
                             {sectionDamages.length === 0 && !isEditing && (
@@ -677,16 +803,14 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
                         </div>
                       )
                     })}
-                    {isEditing && (
-                      <Button variant="outline" size="sm" onClick={handleAddSection} className="w-full">
-                        <Plus className="w-4 h-4 mr-1" />Tilføj skade-sektion
-                      </Button>
-                    )}
+                    <Button variant="outline" size="sm" onClick={() => { if (!isEditing) setIsEditing(true); handleAddSection() }} className="w-full">
+                      <Plus className="w-4 h-4 mr-1" />Tilføj skade-sektion
+                    </Button>
                   </div>
                 )
               })()}
               
-              {/* Add Damage Form */}
+              {/* Add Damage Form - ved klik Tilføj skade sættes isEditing=true så formen kan bruge editData */}
               {showAddDamage && isEditing && (
                 <div className="p-4 border-2 border-blue-200 rounded-lg space-y-3 bg-blue-50/30 mt-3">
                   <p className="font-medium text-sm">Tilføj ny skade</p>
@@ -1182,10 +1306,8 @@ const TaskDetailDialog = ({ task, open, onClose, options, onUpdate, user }) => {
               </div>
               <div>
                 <Label htmlFor="resend-phone">Telefon (valgfrit)</Label>
-                <Input
+                <PhoneInput
                   id="resend-phone"
-                  type="tel"
-                  placeholder="fx +45 12 34 56 78"
                   value={resendOverridePhone}
                   onChange={(e) => setResendOverridePhone(e.target.value)}
                   className="mt-1"

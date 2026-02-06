@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { api, BRAND_BLUE, getIdDaysColor } from '@/lib/constants'
 import { formatAddress, taskAddressString } from '@/lib/utils'
+import { PhoneInput } from '@/components/ui/phone-input'
 
 export default function KundestyringView() {
   const [companies, setCompanies] = useState([])
@@ -699,10 +700,9 @@ export default function KundestyringView() {
             </div>
             <div>
               <Label>Telefon</Label>
-              <Input 
+              <PhoneInput 
                 value={companyForm.phone} 
                 onChange={(e) => setCompanyForm(prev => ({ ...prev, phone: e.target.value }))}
-                placeholder="+45 12 34 56 78" 
               />
             </div>
           </div>
@@ -741,10 +741,9 @@ export default function KundestyringView() {
             </div>
             <div>
               <Label>Telefon</Label>
-              <Input 
+              <PhoneInput 
                 value={contactForm.phone} 
                 onChange={(e) => setContactForm(prev => ({ ...prev, phone: e.target.value }))}
-                placeholder="+45 12 34 56 78" 
               />
             </div>
             <div>

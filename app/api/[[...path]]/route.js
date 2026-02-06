@@ -2785,7 +2785,7 @@ async function handleRoute(request, { params }) {
       return handleCORS(NextResponse.json(cleaned))
     }
 
-    // Send communication with template - POST /api/communications/send
+    // Send communication with template ELLER ad-hoc besked - POST /api/communications/send
     if (route === '/communications/send' && method === 'POST') {
       const user = getUserFromToken(request)
       if (!user || user.role !== 'admin') {
@@ -2793,9 +2793,69 @@ async function handleRoute(request, { params }) {
       }
 
       const body = await request.json()
-      const { type, template, to, toPhone, contactName, taskId } = body
+      const { type, template, to, toPhone, contactName, taskId, message: bodyMessage, subject: bodySubject, twoWay } = body
 
-      // Portal invitation template
+      // Ad-hoc: direkte besked (fra Kommunikation i opgavedialog)
+      const isAdHoc = !template && (bodyMessage != null && bodyMessage !== '')
+      const TWO_WAY_FROM = process.env.TWILIO_PHONE_NUMBER || '+4552517040'
+
+      if (isAdHoc) {
+        let success = false
+        let errorMsg = null
+        const toAddress = type === 'email' ? to : (to || toPhone)
+        if (!toAddress) {
+          return handleCORS(NextResponse.json({ error: 'Modtager mangler' }, { status: 400 }))
+        }
+
+        if (type === 'email') {
+          const subject = bodySubject || `SMARTREP: Vedr. opgave`
+          const html = `<div style="font-family: Arial, sans-serif; white-space: pre-wrap;">${(bodyMessage || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`
+          const result = await sendEmailWithTemplate(toAddress, subject, html)
+          success = result.success
+          if (!result.success) errorMsg = result.error
+        }
+
+        if (type === 'sms' && process.env.TWILIO_ACCOUNT_SID) {
+          try {
+            let phoneNumber = String(toAddress).replace(/\s/g, '')
+            if (!phoneNumber.startsWith('+')) phoneNumber = '+45' + phoneNumber.replace(/^0+/, '')
+            const from = twoWay ? TWO_WAY_FROM.replace(/\s/g, '') : 'SMARTREP'
+            const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages.json`
+            const twilioAuth = Buffer.from(`${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`).toString('base64')
+            const twilioRes = await fetch(twilioUrl, {
+              method: 'POST',
+              headers: { 'Authorization': `Basic ${twilioAuth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ To: phoneNumber, From: from, Body: bodyMessage })
+            })
+            const twilioData = await twilioRes.json()
+            success = twilioRes.ok && !twilioData.error_code
+            if (twilioData.error_code) errorMsg = twilioData.message
+          } catch (err) {
+            errorMsg = err.message
+          }
+        }
+
+        const commDoc = {
+          id: uuidv4(),
+          type,
+          to: toAddress,
+          toName: contactName || null,
+          taskId: taskId || null,
+          message: bodyMessage,
+          subject: type === 'email' ? (bodySubject || '') : null,
+          status: success ? 'sent' : 'failed',
+          error: errorMsg || null,
+          sentAt: success ? new Date() : null,
+          sentBy: user.id,
+          createdAt: new Date(),
+          twoWay: type === 'sms' ? !!twoWay : undefined
+        }
+        await db.collection('communications').insertOne(commDoc)
+        if (success) return handleCORS(NextResponse.json({ success: true, message: 'Besked sendt' }))
+        return handleCORS(NextResponse.json({ error: errorMsg || 'Fejl ved afsendelse' }, { status: 500 }))
+      }
+
+      // Template-baseret (portal_invitation m.fl.)
       const templates = {
         portal_invitation: {
           email: {
@@ -2850,7 +2910,6 @@ async function handleRoute(request, { params }) {
       let success = false
       let errorMsg = null
 
-      // Send email (bruger sendEmailWithTemplate – samme from som alle andre mails)
       if (type === 'email' && to) {
         const emailTemplate = selectedTemplate.email
         const result = await sendEmailWithTemplate(to, emailTemplate.subject, emailTemplate.html)
@@ -2858,13 +2917,11 @@ async function handleRoute(request, { params }) {
         if (!result.success) errorMsg = result.error
       }
 
-      // Send SMS
       if (type === 'sms' && toPhone && process.env.TWILIO_ACCOUNT_SID) {
         try {
           const smsTemplate = selectedTemplate.sms
           const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages.json`
           const twilioAuth = Buffer.from(`${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`).toString('base64')
-          
           await fetch(twilioUrl, {
             method: 'POST',
             headers: {
@@ -2883,7 +2940,6 @@ async function handleRoute(request, { params }) {
         }
       }
 
-      // Log communication
       await db.collection('communications').insertOne({
         id: uuidv4(),
         type: type,
@@ -2903,6 +2959,67 @@ async function handleRoute(request, { params }) {
       } else {
         return handleCORS(NextResponse.json({ error: errorMsg || 'Fejl ved afsendelse' }, { status: 500 }))
       }
+    }
+
+    // Marketing send - POST /api/marketing/send (SMS og/eller email til valgte kontakter)
+    if (route === '/marketing/send' && method === 'POST') {
+      const user = getUserFromToken(request)
+      if (!user || user.role !== 'admin') {
+        return handleCORS(NextResponse.json({ error: 'Ikke autoriseret' }, { status: 401 }))
+      }
+      const body = await request.json()
+      const { companyId, contactIds, sendSms, sendEmail, smsMessage, emailSubject, emailHtml } = body
+      if (!Array.isArray(contactIds) || contactIds.length === 0) {
+        return handleCORS(NextResponse.json({ error: 'Vælg mindst én kontakt' }, { status: 400 }))
+      }
+      const query = { id: { $in: contactIds }, role: 'customer' }
+      if (companyId) query.companyId = companyId
+      const contacts = await db.collection('users').find(query).toArray()
+      const cleaned = contacts.map(({ _id, password, ...r }) => r)
+      let sentCount = 0
+      const recipients = []
+      const TWO_WAY_FROM = process.env.TWILIO_PHONE_NUMBER || '+4552517040'
+      for (const c of cleaned) {
+        if (sendEmail && c.email) {
+          const subj = (emailSubject || 'SMARTREP').replace(/\{\{.*?\}\}/g, (m) => {
+            if (m.includes('Kontakt')) return c.name || ''
+            if (m.includes('Kunde')) return c.companyName || ''
+            return m
+          })
+          const html = (emailHtml || '').replace(/\{\{Kontakt_navn\}\}/g, c.name || '').replace(/\{\{Kunde\}\}/g, c.companyName || '')
+          const res = await sendEmailWithTemplate(c.email, subj, html)
+          if (res.success) sentCount++
+        }
+        if (sendSms && c.phone) {
+          let phone = String(c.phone).replace(/\s/g, '')
+          if (!phone.startsWith('+')) phone = '+45' + phone.replace(/^0+/, '')
+          try {
+            const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages.json`
+            const twilioAuth = Buffer.from(`${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`).toString('base64')
+            const r = await fetch(twilioUrl, {
+              method: 'POST',
+              headers: { 'Authorization': `Basic ${twilioAuth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ To: phone, From: 'SMARTREP', Body: (smsMessage || '').replace(/\{\{.*?\}\}/g, (m) => (m.includes('Kontakt') ? c.name : m.includes('Kunde') ? c.companyName : m)) })
+            })
+            if (r.ok) sentCount++
+          } catch (_) {}
+        }
+        recipients.push({ id: c.id, name: c.name, email: c.email, phone: c.phone })
+      }
+      await db.collection('communications').insertOne({
+        id: uuidv4(),
+        type: 'marketing',
+        taskId: null,
+        sendSms: !!sendSms,
+        sendEmail: !!sendEmail,
+        message: smsMessage || null,
+        subject: emailSubject || null,
+        recipients,
+        status: sentCount > 0 ? 'sent' : 'failed',
+        sentBy: user.id,
+        createdAt: new Date()
+      })
+      return handleCORS(NextResponse.json({ success: true, sentCount, message: `Sendt til ${sentCount} modtager(e)` }))
     }
 
     // ============ FILE UPLOAD ============

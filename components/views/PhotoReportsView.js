@@ -183,6 +183,9 @@ export default function PhotoReportsView({ user }) {
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
+                        {report.reportNumber && (
+                          <span className="text-xs font-medium text-gray-500">#{report.reportNumber}</span>
+                        )}
                         {getStatusBadge(report.status)}
                         <span className="text-sm text-gray-500">
                           {report.createdAt ? format(new Date(report.createdAt), 'dd/MM/yyyy HH:mm', { locale: da }) : '-'}
