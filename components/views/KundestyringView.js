@@ -9,8 +9,8 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { 
-  Building2, Users, Plus, MoreHorizontal, Eye, Trash2, Phone, Mail, ChevronRight, ChevronDown,
-  Loader2, Search, Pencil, UserPlus, UserCheck, Crown
+  Building2, Users, Plus, MoreHorizontal, Eye, Trash2, Phone, Mail,   ChevronRight, ChevronDown,
+  Loader2, Search, Pencil, UserPlus, UserCheck, Crown, Send
 } from 'lucide-react'
 import { api, BRAND_BLUE, getIdDaysColor } from '@/lib/constants'
 import { formatAddress, taskAddressString } from '@/lib/utils'
@@ -109,54 +109,25 @@ export default function KundestyringView() {
   // Open task detail modal
   const [viewingTask, setViewingTask] = useState(null)
 
-  // Resend password function
-  const handleResendPassword = async (contact) => {
-    if (!confirm(`Vil du gensende password til ${contact.name} (${contact.email})?`)) return
-    try {
-      await api.post('/auth/resend-password', { email: contact.email })
-      alert('✅ Nyt password sendt til ' + contact.email)
-    } catch (err) {
-      console.error(err)
-      alert('Fejl ved afsendelse af password')
-    }
-  }
-
-  // Send portal invitation (first time)
-  const handleSendInvitation = async (contact) => {
-    if (!contact.email?.trim()) {
+  // Send invitation from contact dialog (admin only, via /api/invite/send)
+  const [sendingInvite, setSendingInvite] = useState(false)
+  const handleSendInviteFromDialog = async () => {
+    if (!editingContact?.id) return
+    if (!contactForm.email?.trim()) {
       alert('Kontakten har ikke e-mail – tilføj e-mail først.')
       return
     }
-    if (!confirm(`Vil du sende invitation til portalen til ${contact.name} (${contact.email})?`)) return
+    if (!confirm(`Vil du sende invitation til kundeportalen til ${contactForm.name} (${contactForm.email})?\n\nDer sendes både e-mail og SMS.`)) return
+    setSendingInvite(true)
     try {
-      await api.post('/communications/send', {
-        type: 'email',
-        template: 'portal_invitation',
-        to: contact.email,
-        contactName: contact.name
-      })
-      alert('✅ Invitation sendt til ' + contact.email)
+      await api.post('/invite/send', { contactId: editingContact.id })
+      alert('✅ Invitation sendt til ' + contactForm.email + '\n(E-mail og SMS afsendt)')
       loadData()
     } catch (err) {
       console.error(err)
-      alert('Fejl ved afsendelse af invitation')
-    }
-  }
-
-  // Resend portal invitation (contact already has access)
-  const handleResendInvitation = async (contact) => {
-    if (!confirm(`Vil du gensende portal invitation til ${contact.name} (${contact.email})?`)) return
-    try {
-      await api.post('/communications/send', {
-        type: 'email',
-        template: 'portal_invitation',
-        to: contact.email,
-        contactName: contact.name
-      })
-      alert('✅ Portal invitation sendt til ' + contact.email)
-    } catch (err) {
-      console.error(err)
-      alert('Fejl ved afsendelse af invitation')
+      alert(err?.message || 'Fejl ved afsendelse af invitation')
+    } finally {
+      setSendingInvite(false)
     }
   }
 
@@ -502,38 +473,6 @@ export default function KundestyringView() {
                                   </span>
                                 </div>
                                 <div className="flex items-center gap-1 w-32 justify-end">
-                                  {(contact.hasPortalAccess || contact.role === 'customer') ? (
-                                    <>
-                                      <Button 
-                                        variant="ghost" 
-                                        size="sm"
-                                        className="text-xs text-gray-500 hover:text-blue-600"
-                                        onClick={(e) => { e.stopPropagation(); handleResendPassword(contact) }}
-                                        title="Gensend password"
-                                      >
-                                        🔑
-                                      </Button>
-                                      <Button 
-                                        variant="ghost" 
-                                        size="sm"
-                                        className="text-xs text-gray-500 hover:text-blue-600"
-                                        onClick={(e) => { e.stopPropagation(); handleResendInvitation(contact) }}
-                                        title="Gensend invitation"
-                                      >
-                                        ✉️
-                                      </Button>
-                                    </>
-                                  ) : (
-                                    <Button 
-                                      variant="ghost" 
-                                      size="sm"
-                                      className="text-xs text-gray-500 hover:text-blue-600"
-                                      onClick={(e) => { e.stopPropagation(); handleSendInvitation(contact) }}
-                                      title="Send invitation til portal"
-                                    >
-                                      ✉️
-                                    </Button>
-                                  )}
                                   <Button 
                                     variant="ghost" 
                                     size="sm"
@@ -770,18 +709,32 @@ export default function KundestyringView() {
               />
             </div>
             <div className="border-t pt-4 space-y-3">
-              <Label className="text-sm font-medium">Adgangsrettigheder</Label>
-              <div className="flex items-center gap-2">
-                <input 
-                  type="checkbox" 
-                  id="portalAccess"
-                  checked={contactForm.hasPortalAccess}
-                  onChange={(e) => setContactForm(prev => ({ ...prev, hasPortalAccess: e.target.checked }))}
-                  className="w-4 h-4 rounded border-gray-300"
-                />
-                <label htmlFor="portalAccess" className="text-sm text-gray-700">
-                  Portal adgang (kan logge ind)
-                </label>
+              <Label className="text-sm font-medium">Portal</Label>
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="checkbox" 
+                    id="portalAccess"
+                    checked={contactForm.hasPortalAccess}
+                    onChange={(e) => setContactForm(prev => ({ ...prev, hasPortalAccess: e.target.checked }))}
+                    className="w-4 h-4 rounded border-gray-300"
+                  />
+                  <label htmlFor="portalAccess" className="text-sm text-gray-700">
+                    Portal adgang
+                  </label>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={contactForm.hasPortalAccess && editingContact?.id ? 'default' : 'outline'}
+                  disabled={!contactForm.hasPortalAccess || !editingContact?.id || sendingInvite}
+                  onClick={handleSendInviteFromDialog}
+                  className="disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={contactForm.hasPortalAccess && editingContact?.id ? { backgroundColor: BRAND_BLUE } : {}}
+                >
+                  {sendingInvite ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
+                  Send invitation
+                </Button>
               </div>
               <div className="flex items-center gap-2">
                 <input 

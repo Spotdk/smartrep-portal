@@ -928,6 +928,114 @@ async function handleRoute(request, { params }) {
       return handleCORS(NextResponse.json({ success: true, message: 'Password sendt til ' + email }))
     }
 
+    // ============ INVITE TO PORTAL (token 48h, email + SMS) ============
+    
+    // Send invitation - POST /api/invite/send (admin only)
+    if (route === '/invite/send' && method === 'POST') {
+      const adminUser = getUserFromToken(request)
+      if (!adminUser || adminUser.role !== 'admin') {
+        return handleCORS(NextResponse.json({ error: 'Ikke autoriseret' }, { status: 401 }))
+      }
+      const body = await request.json()
+      const { contactId } = body
+      const contact = await db.collection('users').findOne({ id: contactId, role: 'customer' })
+      if (!contact) {
+        return handleCORS(NextResponse.json({ error: 'Kontakt ikke fundet' }, { status: 404 }))
+      }
+      if (!contact.email?.trim()) {
+        return handleCORS(NextResponse.json({ error: 'Kontakten har ingen e-mail' }, { status: 400 }))
+      }
+      const token = uuidv4()
+      const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000)
+      await db.collection('invite_tokens').insertOne({ token, userId: contact.id, email: contact.email, expiresAt, createdAt: new Date() })
+      await db.collection('users').updateOne({ id: contactId }, { $set: { hasPortalAccess: true, updatedAt: new Date() } })
+      const baseUrl = process.env.PORTAL_PUBLIC_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://kundeportal.smartrep.nu'
+      const inviteUrl = `${baseUrl.replace(/\/$/, '')}/invite/${token}`
+      const logoUrl = `${baseUrl.replace(/\/$/, '')}/smartrep-logo-hvid.png`
+      const inviteHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: #0133ff; color: white; padding: 30px; text-align: center;">
+            <img src="${logoUrl}" alt="SMARTREP" width="160" style="display: block; margin: 0 auto; max-width: 160px;" />
+          </div>
+          <div style="padding: 30px; background: #f9fafb;">
+            <h2 style="color: #111827;">Hej ${contact.name || 'Kunde'},</h2>
+            <p style="color: #374151; font-size: 16px; line-height: 1.6;">Du er blevet inviteret til SMARTREP Kundeportalen, hvor du kan:</p>
+            <ul style="color: #374151; font-size: 16px; line-height: 1.8;">
+              <li>Se og følge status på dine opgaver</li>
+              <li>Oprette nye opgaver</li>
+              <li>Se datoer for planlagte besøg</li>
+              <li>Godkende fotorapporter</li>
+              <li>Kommunikere direkte med SMARTREP</li>
+            </ul>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${inviteUrl}" style="background: #0133ff; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Opret adgangskode og log ind</a>
+            </div>
+            <p style="color: #6b7280; font-size: 14px;">Linket udløber om 48 timer.</p>
+            <p style="color: #6b7280; font-size: 14px;">Ved spørgsmål kontakt os på tlf. +45 8282 2572</p>
+          </div>
+          <div style="background: #f3f4f6; padding: 20px; text-align: center; color: #6b7280; font-size: 12px;">
+            <p style="margin: 0 0 8px 0; font-weight: bold; color: #1a1a1a;">SMARTREP ApS</p>
+            <p style="margin: 0 0 4px 0;">www.smartrep.nu | Tlf. 8282 2572</p>
+            <p style="margin: 0;">info@smartrep.nu</p>
+          </div>
+          <div style="background: #1a1a2e; padding: 20px; text-align: center;">
+            <span style="display: block; font-size: 11px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Øvrige brands under SMARTREP</span>
+            <div style="font-size: 13px;">
+              <a href="https://www.alupleje.dk" style="color: #d1d5db; text-decoration: none;">Alupleje</a>
+              <span style="color: #6b7280; margin: 0 8px;">•</span>
+              <a href="https://www.colorup.dk" style="color: #d1d5db; text-decoration: none;">COLOR:UP</a>
+              <span style="color: #6b7280; margin: 0 8px;">•</span>
+              <a href="https://www.coating.dk" style="color: #d1d5db; text-decoration: none;">Coating.dk</a>
+            </div>
+          </div>
+        </div>
+      `
+      const emailResult = await sendEmailWithTemplate(contact.email, 'Invitation til SMARTREP Kundeportal', inviteHtml)
+      let smsResult = { success: false }
+      if (contact.phone?.trim() && process.env.TWILIO_ACCOUNT_SID) {
+        smsResult = await sendSMS(contact.phone, 'Du har netop modtaget en e-mail med invitation til SMARTREP kundeportal. NB: Hvis du ikke kan se invitationen i indbakken, tjek da SPAM-folder. Mvh. SMARTREP')
+      }
+      await db.collection('activity_logs').insertOne({
+        id: uuidv4(),
+        entityType: 'invite',
+        entityId: contactId,
+        action: 'invitation_sent',
+        description: 'Invitation sendt til kundeportal',
+        details: { to: contact.email, emailOk: emailResult.success, smsOk: smsResult.success },
+        userId: adminUser.id,
+        userName: adminUser.name,
+        createdAt: new Date()
+      })
+      return handleCORS(NextResponse.json({ success: true, emailSent: emailResult.success, smsSent: smsResult.success }))
+    }
+
+    // Set password from invite token - POST /api/invite/set-password (public)
+    if (route === '/invite/set-password' && method === 'POST') {
+      const body = await request.json()
+      const { token, password } = body
+      if (!token || !password || password.length < 6) {
+        return handleCORS(NextResponse.json({ error: 'Ugyldigt link eller password for kort (min. 6 tegn)' }, { status: 400 }))
+      }
+      const invite = await db.collection('invite_tokens').findOne({ token })
+      if (!invite || new Date() > new Date(invite.expiresAt)) {
+        return handleCORS(NextResponse.json({ error: 'Linket er ugyldigt eller udløbet' }, { status: 400 }))
+      }
+      const hashed = await bcrypt.hash(password, 12)
+      await db.collection('users').updateOne({ id: invite.userId }, { $set: { password: hashed, updatedAt: new Date() } })
+      await db.collection('invite_tokens').deleteOne({ token })
+      const user = await db.collection('users').findOne({ id: invite.userId })
+      if (!user) {
+        return handleCORS(NextResponse.json({ error: 'Bruger ikke fundet' }, { status: 500 }))
+      }
+      const jwtToken = jwt.sign(
+        { id: user.id, email: user.email, role: user.role, companyId: user.companyId, name: user.name },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      )
+      const { password: _, ...userWithoutPassword } = user
+      return handleCORS(NextResponse.json({ token: jwtToken, user: userWithoutPassword }))
+    }
+
     // ============ COMPANIES ROUTES ============
     
     // Get all companies - GET /api/companies
